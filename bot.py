@@ -1043,8 +1043,11 @@ async def create_xianyu_order_direct(update: Update, context: ContextTypes.DEFAU
     
     # 创建订单
     order_id = f"XY_{user_id}_{int(time.time())}"
+    logger.info(f"About to create order {order_id}")
+    logger.info(f"Order data: user_id={user_id}, plan_type={plan_type}, amount={plan_info['price_cny']}")
+    
     try:
-        db.create_order({
+        success = db.create_order({
             'order_id': order_id,
             'user_id': user_id,
             'payment_method': 'xianyu',
@@ -1054,9 +1057,15 @@ async def create_xianyu_order_direct(update: Update, context: ContextTypes.DEFAU
             'status': 'pending',
             'membership_days': plan_info['days']
         })
-        logger.info(f"Order {order_id} created successfully")
+        
+        if not success:
+            logger.error(f"Failed to create order {order_id} - database returned False")
+            await query.answer("❌ 创建订单失败，请稍后重试", show_alert=True)
+            return
+            
+        logger.info(f"Order {order_id} created successfully in database")
     except Exception as e:
-        logger.error(f"Failed to create order: {e}", exc_info=True)
+        logger.error(f"Exception creating order in database: {e}", exc_info=True)
         await query.answer("❌ 创建订单失败，请稍后重试", show_alert=True)
         return
     
@@ -1065,8 +1074,10 @@ async def create_xianyu_order_direct(update: Update, context: ContextTypes.DEFAU
         'action': 'waiting_xianyu_order',
         'order_id': order_id
     }
+    logger.info(f"User state set for user {user_id}")
     
     # 显示订单信息和操作指南
+    logger.info(f"Preparing message text for order {order_id}")
     text = f"""
 ✅ 订单已创建
 
