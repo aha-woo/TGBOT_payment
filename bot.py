@@ -354,21 +354,34 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # 直接支付方式（从欢迎页面）
     elif data == "direct_usdt_payment":
-        if ENABLE_MULTIPLE_PLANS:
-            # 多套餐模式：显示套餐选择
-            user_states[user_id] = {'selected_payment': 'usdt'}
-            await show_membership_plans(update, context, query=query, payment_method='usdt')
-        else:
-            # 单套餐模式：直接进入支付
-            await process_tron_payment(update, context, 'default', DEFAULT_PLAN, query)
+        try:
+            logger.info(f"User {user_id} clicked usdt payment, ENABLE_MULTIPLE_PLANS={ENABLE_MULTIPLE_PLANS}")
+            if ENABLE_MULTIPLE_PLANS:
+                # 多套餐模式：显示套餐选择
+                user_states[user_id] = {'selected_payment': 'usdt'}
+                await show_membership_plans(update, context, query=query, payment_method='usdt')
+            else:
+                # 单套餐模式：直接进入支付
+                logger.info(f"Calling process_tron_payment with plan: {DEFAULT_PLAN}")
+                await process_tron_payment(update, context, 'default', DEFAULT_PLAN, query)
+        except Exception as e:
+            logger.error(f"Error in direct_usdt_payment: {e}", exc_info=True)
+            await query.answer("❌ 处理失败，请稍后重试", show_alert=True)
     
     elif data == "direct_xianyu_payment":
-        if ENABLE_MULTIPLE_PLANS:
-            # 多套餐模式：显示购买指南和套餐选择
-            await show_xianyu_guide(update, context, query=query)
-        else:
-            # 单套餐模式：直接创建订单并等待订单号
-            await create_xianyu_order_direct(update, context, 'default', DEFAULT_PLAN, query)
+        try:
+            logger.info(f"User {user_id} clicked xianyu payment, ENABLE_MULTIPLE_PLANS={ENABLE_MULTIPLE_PLANS}")
+            if ENABLE_MULTIPLE_PLANS:
+                # 多套餐模式：显示购买指南和套餐选择
+                logger.info("Calling show_xianyu_guide")
+                await show_xianyu_guide(update, context, query=query)
+            else:
+                # 单套餐模式：直接创建订单并等待订单号
+                logger.info(f"Calling create_xianyu_order_direct with plan: {DEFAULT_PLAN}")
+                await create_xianyu_order_direct(update, context, 'default', DEFAULT_PLAN, query)
+        except Exception as e:
+            logger.error(f"Error in direct_xianyu_payment: {e}", exc_info=True)
+            await query.answer("❌ 处理失败，请稍后重试", show_alert=True)
     
     elif data.startswith("plan_"):
         plan_type = data.split("_")[1]
