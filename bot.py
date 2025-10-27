@@ -131,28 +131,77 @@ def format_order_info(order: dict) -> str:
 # ========== 用户命令 ==========
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """开始命令"""
+    """开始命令 - 自定义欢迎界面"""
     user = update.effective_user
     db.get_or_create_user(user.id, user.username, user.first_name, user.last_name)
     
-    keyboard = [
-        [InlineKeyboardButton("💳 购买会员", callback_data="buy_membership")],
-        [InlineKeyboardButton("📋 我的订单", callback_data="my_orders")],
-        [InlineKeyboardButton("👤 会员状态", callback_data="my_status")],
-        [InlineKeyboardButton("❓ 帮助", callback_data="help")]
-    ]
+    # 使用自定义欢迎消息（从 config.py）
+    welcome_text = WELCOME_MESSAGE
     
+    # 构建按钮布局
+    keyboard = []
+    
+    # 第一行：支付方式（并排显示）
+    # 根据配置决定按钮文字
+    if ENABLE_MULTIPLE_PLANS:
+        # 多套餐模式：显示简单的支付方式
+        usdt_btn_text = "💎 USDT 支付"
+        xianyu_btn_text = "🏪 闲鱼支付"
+    else:
+        # 单套餐模式：直接显示价格
+        usdt_btn_text = f"💎 USDT 支付 - {DEFAULT_PLAN['price_usdt']} USDT"
+        xianyu_btn_text = f"🏪 闲鱼支付 - ¥{DEFAULT_PLAN['price_cny']}"
+    
+    keyboard.append([
+        InlineKeyboardButton(usdt_btn_text, callback_data="direct_usdt_payment"),
+        InlineKeyboardButton(xianyu_btn_text, callback_data="direct_xianyu_payment")
+    ])
+    
+    # 第二行：查询功能（并排显示）
+    keyboard.append([
+        InlineKeyboardButton("📋 我的订单", callback_data="my_orders"),
+        InlineKeyboardButton("👤 会员状态", callback_data="my_status")
+    ])
+    
+    # 第三行：客服和帮助（并排显示）
+    keyboard.append([
+        InlineKeyboardButton("👨‍💼 联系客服", url=CUSTOMER_SERVICE_URL),
+        InlineKeyboardButton("❓ 使用帮助", callback_data="help")
+    ])
+    
+    # 管理员功能（单独一行）
     if is_admin(user.id):
         keyboard.append([InlineKeyboardButton("👑 管理员面板", callback_data="admin_panel")])
     
+    # 隐藏的购买按钮（保留代码，但不显示）
+    # if not is_member:
+    #     keyboard.append([InlineKeyboardButton("🎉 立即购买会员", callback_data="buy_membership")])
+    # else:
+    #     keyboard.append([InlineKeyboardButton("🔄 续费会员", callback_data="buy_membership")])
+    
     reply_markup = InlineKeyboardMarkup(keyboard)
     
-    await update.message.reply_text(
-        f"👋 你好 {user.first_name}！\n\n"
-        "欢迎使用我们的会员服务系统\n\n"
-        "请选择您需要的功能：",
-        reply_markup=reply_markup
-    )
+    # 如果配置了欢迎图片，发送图片+文字；否则只发送文字
+    if WELCOME_IMAGE:
+        try:
+            await update.message.reply_photo(
+                photo=WELCOME_IMAGE,
+                caption=welcome_text,
+                reply_markup=reply_markup
+            )
+        except Exception as e:
+            logger.error(f"Failed to send welcome image: {e}")
+            # 图片发送失败，降级为纯文字
+            await update.message.reply_text(
+                welcome_text,
+                reply_markup=reply_markup
+            )
+    else:
+        # 没有配置图片，只发送文字
+        await update.message.reply_text(
+            welcome_text,
+            reply_markup=reply_markup
+        )
 
 
 async def buy_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -303,9 +352,94 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data == "buy_membership":
         await show_membership_plans(update, context, query=query)
     
+    # 直接支付方式（从欢迎页面）
+    elif data == "direct_usdt_payment":
+        if ENABLE_MULTIPLE_PLANS:
+            # 多套餐模式：显示套餐选择
+            user_states[user_id] = {'selected_payment': 'usdt'}
+            await show_membership_plans(update, context, query=query, payment_method='usdt')
+        else:
+            # 单套餐模式：直接进入支付
+            await process_tron_payment(update, context, 'default', DEFAULT_PLAN, query)
+    
+    elif data == "direct_xianyu_payment":
+        if ENABLE_MULTIPLE_PLANS:
+            # 多套餐模式：显示购买指南和套餐选择
+            await show_xianyu_guide(update, context, query=query)
+        else:
+            # 单套餐模式：直接创建订单并等待订单号
+            await create_xianyu_order_direct(update, context, 'default', DEFAULT_PLAN, query)
+    
     elif data.startswith("plan_"):
         plan_type = data.split("_")[1]
         await show_payment_methods(update, context, plan_type, query=query)
+    
+    # 闲鱼支付 - 选择套餐后直接进入订单号输入流程
+    elif data.startswith("xianyu_plan_"):
+        plan_type = data.replace("xianyu_plan_", "")
+        plan_info = MEMBERSHIP_PLANS.get(plan_type)
+        
+        if not plan_info:
+            await query.answer("套餐不存在", show_alert=True)
+            return
+        
+        # 检查防刷限制
+        pending_count = db.count_user_pending_orders(user_id)
+        if pending_count >= MAX_PENDING_ORDERS_PER_USER:
+            await query.answer(f"您有 {pending_count} 个待支付订单，请先完成支付", show_alert=True)
+            return
+        
+        last_order_time = db.get_user_last_order_time(user_id)
+        if last_order_time:
+            time_since_last = (datetime.now() - last_order_time).total_seconds()
+            if time_since_last < MIN_ORDER_INTERVAL_SECONDS:
+                wait_time = int(MIN_ORDER_INTERVAL_SECONDS - time_since_last)
+                await query.answer(f"请等待 {wait_time} 秒后再下单", show_alert=True)
+                return
+        
+        # 创建订单
+        order_id = f"XY_{user_id}_{int(time.time())}"
+        db.create_order({
+            'order_id': order_id,
+            'user_id': user_id,
+            'payment_method': 'xianyu',
+            'plan_type': plan_type,
+            'amount': plan_info['price_cny'],
+            'currency': 'CNY',
+            'status': 'pending',
+            'membership_days': plan_info['days']
+        })
+        
+        # 设置用户状态，等待输入订单号
+        user_states[user_id] = {
+            'action': 'waiting_xianyu_order',
+            'order_id': order_id
+        }
+        
+        # 提示用户输入订单号
+        text = f"""
+✅ 订单已创建
+
+🛒 套餐：{plan_info['name']}
+💰 价格：¥{plan_info['price_cny']}
+⏰ 时长：{plan_info['days']} 天
+📋 订单号：`{order_id}`
+
+📝 请输入您的闲鱼订单号
+
+⚠️ 重要提示：
+• 确保已在闲鱼完成付款
+• 订单号通常为 10-20 位数字
+• 提交后等待管理员审核（24小时内）
+
+💡 如还未购买，请点击下方按钮前往闲鱼
+"""
+        
+        keyboard = [
+            [InlineKeyboardButton("🛒 打开闲鱼商品", url=XIANYU_PRODUCT_URL)],
+            [InlineKeyboardButton("❌ 取消订单", callback_data=f"cancel_order_{order_id}")]
+        ]
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
     
     elif data.startswith("pay_"):
         parts = data.split("_")
@@ -599,25 +733,113 @@ USDT: {stats['total_usdt']:.2f}
     
     # 返回主菜单
     elif data == "back_to_main":
-        keyboard = [
-            [InlineKeyboardButton("💳 购买会员", callback_data="buy_membership")],
-            [InlineKeyboardButton("📋 我的订单", callback_data="my_orders")],
-            [InlineKeyboardButton("👤 会员状态", callback_data="my_status")],
-            [InlineKeyboardButton("❓ 帮助", callback_data="help")]
-        ]
+        # 使用自定义欢迎消息
+        welcome_text = WELCOME_MESSAGE
         
+        # 构建按钮布局（与 start_command 相同）
+        keyboard = []
+        
+        # 第一行：支付方式
+        # 根据配置决定按钮文字
+        if ENABLE_MULTIPLE_PLANS:
+            usdt_btn_text = "💎 USDT 支付"
+            xianyu_btn_text = "🏪 闲鱼支付"
+        else:
+            usdt_btn_text = f"💎 USDT 支付 - {DEFAULT_PLAN['price_usdt']} USDT"
+            xianyu_btn_text = f"🏪 闲鱼支付 - ¥{DEFAULT_PLAN['price_cny']}"
+        
+        keyboard.append([
+            InlineKeyboardButton(usdt_btn_text, callback_data="direct_usdt_payment"),
+            InlineKeyboardButton(xianyu_btn_text, callback_data="direct_xianyu_payment")
+        ])
+        
+        # 第二行：查询功能
+        keyboard.append([
+            InlineKeyboardButton("📋 我的订单", callback_data="my_orders"),
+            InlineKeyboardButton("👤 会员状态", callback_data="my_status")
+        ])
+        
+        # 第三行：客服和帮助
+        keyboard.append([
+            InlineKeyboardButton("👨‍💼 联系客服", url=CUSTOMER_SERVICE_URL),
+            InlineKeyboardButton("❓ 使用帮助", callback_data="help")
+        ])
+        
+        # 管理员功能
         if is_admin(user_id):
             keyboard.append([InlineKeyboardButton("👑 管理员面板", callback_data="admin_panel")])
         
         reply_markup = InlineKeyboardMarkup(keyboard)
-        await query.edit_message_text("请选择您需要的功能：", reply_markup=reply_markup)
+        
+        # 注意：edit_message 不支持添加图片，只能编辑文字
+        # 如果需要显示图片，需要删除旧消息并发送新消息
+        await query.edit_message_text(welcome_text, reply_markup=reply_markup)
 
 
 # ========== 业务逻辑函数 ==========
 
-async def show_membership_plans(update: Update, context: ContextTypes.DEFAULT_TYPE, query=None):
-    """显示会员套餐"""
-    text = "💎 选择会员套餐：\n\n"
+async def show_xianyu_guide(update: Update, context: ContextTypes.DEFAULT_TYPE, query=None):
+    """显示闲鱼购买指南页面"""
+    text = """
+🏪 闲鱼支付购买指南
+
+📱 购买步骤：
+1️⃣ 点击下方「打开闲鱼商品」按钮
+2️⃣ 在闲鱼完成购买（需要登录闲鱼账号）
+3️⃣ 获得订单号后，返回这里
+4️⃣ 选择您购买的套餐
+5️⃣ 输入订单号提交审核
+
+⚠️ 重要提示：
+• 闲鱼需要您手动登录（Bot 无法自动登录）
+• 如已登录浏览器，通常会保持登录状态
+• 订单审核时间：24 小时内
+
+💎 会员套餐：
+"""
+    
+    keyboard = []
+    
+    # 添加套餐信息到文字
+    for plan_key, plan_info in MEMBERSHIP_PLANS.items():
+        text += f"• {plan_info['name']}：¥{plan_info['price_cny']} / {plan_info['days']}天\n"
+    
+    text += "\n👇 请先完成购买，再选择套餐提交订单号"
+    
+    # 第一个按钮：打开闲鱼商品（URL 按钮）
+    keyboard.append([InlineKeyboardButton("🛒 打开闲鱼商品", url=XIANYU_PRODUCT_URL)])
+    
+    # 添加套餐选择按钮（每个套餐一行）
+    for plan_key, plan_info in MEMBERSHIP_PLANS.items():
+        keyboard.append([InlineKeyboardButton(
+            f"📝 {plan_info['name']} - ¥{plan_info['price_cny']}",
+            callback_data=f"xianyu_plan_{plan_key}"
+        )])
+    
+    # 返回按钮
+    keyboard.append([InlineKeyboardButton("« 返回主菜单", callback_data="back_to_main")])
+    
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    if query:
+        await query.edit_message_text(text, reply_markup=reply_markup)
+    else:
+        await update.message.reply_text(text, reply_markup=reply_markup)
+
+
+async def show_membership_plans(update: Update, context: ContextTypes.DEFAULT_TYPE, query=None, payment_method=None):
+    """显示会员套餐
+    
+    Args:
+        payment_method: 如果提供，选择套餐后直接跳转到该支付方式（'usdt' 或 'xianyu'）
+    """
+    if payment_method == 'usdt':
+        text = "💎 USDT 支付 - 选择会员套餐：\n\n"
+    elif payment_method == 'xianyu':
+        text = "🏪 闲鱼支付 - 选择会员套餐：\n\n"
+    else:
+        text = "💎 选择会员套餐：\n\n"
+    
     keyboard = []
     
     for plan_key, plan_info in MEMBERSHIP_PLANS.items():
@@ -625,9 +847,17 @@ async def show_membership_plans(update: Update, context: ContextTypes.DEFAULT_TY
         text += f"   时长: {plan_info['days']} 天\n"
         text += f"   USDT: {plan_info['price_usdt']} | 人民币: ¥{plan_info['price_cny']}\n\n"
         
+        # 如果已选择支付方式，直接跳转到支付处理
+        if payment_method == 'usdt':
+            callback_data = f"pay_tron_{plan_key}"
+        elif payment_method == 'xianyu':
+            callback_data = f"pay_xianyu_{plan_key}"
+        else:
+            callback_data = f"plan_{plan_key}"
+        
         keyboard.append([InlineKeyboardButton(
             f"{plan_info['name']} - {plan_info['days']}天",
-            callback_data=f"plan_{plan_key}"
+            callback_data=callback_data
         )])
     
     keyboard.append([InlineKeyboardButton("« 返回", callback_data="back_to_main")])
@@ -697,6 +927,72 @@ async def process_payment_selection(update: Update, context: ContextTypes.DEFAUL
         await process_tron_payment(update, context, plan_type, plan_info, query)
     elif method == 'xianyu':
         await process_xianyu_payment(update, context, plan_type, plan_info, query)
+
+
+async def create_xianyu_order_direct(update: Update, context: ContextTypes.DEFAULT_TYPE, 
+                                     plan_type: str, plan_info: dict, query):
+    """单套餐模式：直接创建闲鱼订单"""
+    user_id = update.effective_user.id
+    
+    # 检查防刷限制
+    pending_count = db.count_user_pending_orders(user_id)
+    if pending_count >= MAX_PENDING_ORDERS_PER_USER:
+        await query.answer(f"您有 {pending_count} 个待支付订单，请先完成支付", show_alert=True)
+        return
+    
+    last_order_time = db.get_user_last_order_time(user_id)
+    if last_order_time:
+        time_since_last = (datetime.now() - last_order_time).total_seconds()
+        if time_since_last < MIN_ORDER_INTERVAL_SECONDS:
+            wait_time = int(MIN_ORDER_INTERVAL_SECONDS - time_since_last)
+            await query.answer(f"请等待 {wait_time} 秒后再下单", show_alert=True)
+            return
+    
+    # 创建订单
+    order_id = f"XY_{user_id}_{int(time.time())}"
+    db.create_order({
+        'order_id': order_id,
+        'user_id': user_id,
+        'payment_method': 'xianyu',
+        'plan_type': plan_type,
+        'amount': plan_info['price_cny'],
+        'currency': 'CNY',
+        'status': 'pending',
+        'membership_days': plan_info['days']
+    })
+    
+    # 设置用户状态，等待输入订单号
+    user_states[user_id] = {
+        'action': 'waiting_xianyu_order',
+        'order_id': order_id
+    }
+    
+    # 显示订单信息和操作指南
+    text = f"""
+✅ 订单已创建
+
+🛒 套餐：{plan_info['name']}
+💰 价格：¥{plan_info['price_cny']}
+⏰ 时长：{plan_info['days']} 天
+📋 订单号：`{order_id}`
+
+📱 支付步骤：
+1️⃣ 点击下方「打开闲鱼商品」按钮
+2️⃣ 在闲鱼完成购买（需要登录闲鱼账号）
+3️⃣ 复制闲鱼订单号
+4️⃣ 回到这里发送订单号给我
+
+⚠️ 重要提示：
+• 确保已在闲鱼完成付款
+• 订单号通常为 10-20 位数字
+• 提交后等待管理员审核（24小时内）
+"""
+    
+    keyboard = [
+        [InlineKeyboardButton("🛒 打开闲鱼商品", url=XIANYU_PRODUCT_URL)],
+        [InlineKeyboardButton("❌ 取消订单", callback_data=f"cancel_order_{order_id}")]
+    ]
+    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
 
 
 async def process_tron_payment(update: Update, context: ContextTypes.DEFAULT_TYPE, 

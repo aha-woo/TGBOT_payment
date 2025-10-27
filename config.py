@@ -18,7 +18,36 @@ TRONSCAN_API_KEY = os.getenv('TRONSCAN_API_KEY', 'your-tronscan-api-key')  # Tro
 # ========== 闲鱼配置 ==========
 XIANYU_PRODUCT_URL = os.getenv('XIANYU_PRODUCT_URL', 'https://your-xianyu-product-link')  # 闲鱼商品链接
 
+# ========== 客服配置 ==========
+CUSTOMER_SERVICE_URL = os.getenv('CUSTOMER_SERVICE_URL', 'https://t.me/your_customer_service')  # 客服链接（可以是 Telegram 个人/群组链接）
+
+# ========== 欢迎页面配置 ==========
+# 欢迎图片 - 可以是图片 URL 或 Telegram file_id（留空则不显示图片）
+WELCOME_IMAGE = os.getenv('WELCOME_IMAGE', '')
+
+# 欢迎消息 - 自定义欢迎文字
+WELCOME_MESSAGE = os.getenv('WELCOME_MESSAGE', """🎉 欢迎来到我们的服务！
+
+✨ 我们提供优质的会员服务
+💎 多种套餐任您选择
+🚀 快速开通，立即享受
+
+👇 请选择支付方式开始购买""")
+
 # ========== 会员配置 ==========
+
+# 是否启用多套餐模式（True=显示套餐选择, False=固定价格直接支付）
+ENABLE_MULTIPLE_PLANS = os.getenv('ENABLE_MULTIPLE_PLANS', 'true').lower() == 'true'
+
+# 默认套餐配置（当 ENABLE_MULTIPLE_PLANS=False 时使用）
+DEFAULT_PLAN = {
+    'name': '会员',
+    'days': 30,
+    'price_usdt': 10.0,
+    'price_cny': 68.0
+}
+
+# 多套餐配置（当 ENABLE_MULTIPLE_PLANS=True 时使用）
 MEMBERSHIP_PLANS = {
     'month': {
         'name': '月度会员',
@@ -69,20 +98,29 @@ WELCOME_MESSAGE = """
 
 # ========== 消息模板 ==========
 HELP_MESSAGE = """
-🤖 欢迎使用支付 Bot
+🤖 使用指南
 
-📌 可用命令：
-/start - 开始使用
-/buy - 购买会员
-/orders - 查看我的订单
-/status - 查看会员状态
-/help - 帮助信息
+✨ 傻瓜式操作，全程按钮！
+
+📱 如何使用：
+1️⃣ 点击「立即购买会员」选择套餐
+2️⃣ 选择支付方式（USDT 或闲鱼）
+3️⃣ 完成支付
+4️⃣ 自动获得频道邀请链接
 
 💳 支持的支付方式：
-1️⃣ USDT (TRC20) - 自动到账
-2️⃣ 闲鱼支付 - 人工审核
+• USDT (TRC20) - 自动到账，秒级确认
+• 闲鱼支付 - 人工审核，24小时内处理
 
-有问题请联系管理员 @admin
+📋 查看订单：
+点击「我的订单」查看支付状态
+
+👤 会员状态：
+点击「会员状态」查看到期时间
+
+💡 提示：所有操作都通过按钮完成，无需输入命令！
+
+有问题请联系管理员
 """
 
 ADMIN_HELP_MESSAGE = """

@@ -5,7 +5,7 @@
 ## ✨ 核心功能
 
 ### 1. 双支付通道
-- **TRON USDT (TRC20)**: 自动监控链上支付，无需人工干预
+- **TRON USDT (TRC20)**: 自动监控链上支付，无需人工干预，秒级到账
 - **闲鱼支付**: 用户提交订单号，管理员手动审核
 
 ### 2. 自动会员管理
@@ -14,37 +14,31 @@
 - ✅ 会员到期自动检测
 - ✅ 支持续费延期
 
-### 3. 完整的订单系统
-- 📋 订单追踪和查询
-- 📊 订单统计和报表
-- ⏰ 订单超时自动处理
-- 🔒 防刷机制
+### 3. 灵活的套餐配置
+- **多套餐模式**: 支持配置多个会员套餐（月/季/年）
+- **单套餐模式**: 固定价格，点击直接支付，流程更简洁
+- 📝 配置方式：在 `.env` 中设置 `ENABLE_MULTIPLE_PLANS=true/false`
 
-### 4. 管理员面板
+### 4. 自定义欢迎页面
+- 🖼️ 支持自定义欢迎图片（Logo/海报）
+- ✏️ 自定义欢迎文案
+- 👨‍💼 联系客服按钮
+- 🎯 全程按钮化操作，无需输入命令
+
+### 5. 广告发送系统
+- 📢 创建和管理广告模板
+- 📸 支持图片 + 文字 + 按钮组合
+- 📤 批量发送到多个频道/群组
+- ⏰ 定时发送功能
+- 📊 完整的发送记录
+
+### 6. 管理员面板
 - 👑 待审核订单管理
-- 👥 用户列表和会员状态
+- 👥 用户列表和会员状态查询
 - 📊 收入统计和数据分析
 - 🔔 实时通知
 
-### 5. 广告发送系统 🆕
-- 📢 **广告模板管理**: 创建和管理可复用的广告模板
-- 📸 **图片支持**: 支持图片 + 文字 + 按钮的多种组合 🆕
-- 📤 **批量发送**: 一键发送广告到多个频道/群组
-- ⏰ **定时发送**: 设置定时任务，自动在指定时间发送
-- 🔘 **按钮支持**: 支持添加可点击按钮（如购买链接）
-- 📊 **发送记录**: 完整的发送历史和统计
-
-**查看详细文档**: 
-- [广告发送功能使用指南](PROMO_GUIDE.md)
-- [图片功能专题指南](PROMO_IMAGE_GUIDE.md) 🆕
-
-## 📦 技术栈
-
-- **语言**: Python 3.8+
-- **Bot 框架**: python-telegram-bot
-- **数据库**: SQLite (轻量级，无需额外配置)
-- **支付**: TRON Network (TRC20-USDT)
-- **二维码**: qrcode + Pillow
+---
 
 ## 🚀 快速开始
 
@@ -56,39 +50,59 @@ pip install -r requirements.txt
 
 ### 2. 配置环境变量
 
-复制 `.env.example` 为 `.env` 并填写配置：
-
-```bash
-cp .env.example .env
-```
-
-编辑 `.env` 文件：
+创建 `.env` 文件：
 
 ```env
+# ========== 必填配置 ==========
+
 # Telegram Bot Token (从 @BotFather 获取)
 BOT_TOKEN=your_bot_token_here
 
-# 管理员 Telegram User ID (可以多个，逗号分隔)
-ADMIN_USER_IDS=123456789,987654321
+# 管理员 User ID (多个用逗号分隔)
+ADMIN_USER_IDS=123456789
 
-# 私有频道 ID (以 -100 开头)
+# VIP 频道 ID (-100 开头)
 PRIVATE_CHANNEL_ID=-1001234567890
 
-# TRON 收款地址
-TRON_WALLET_ADDRESS=TYourWalletAddressHere
+# TRON 收款地址 (T 开头)
+TRON_WALLET_ADDRESS=TYourWalletAddress
 
-# TronScan API Key (从 https://tronscan.org 申请)
-TRONSCAN_API_KEY=your_tronscan_api_key
+# TronScan API Key (从 tronscan.org 获取)
+TRONSCAN_API_KEY=your-api-key
 
 # 闲鱼商品链接
-XIANYU_PRODUCT_URL=https://your-xianyu-product-link
+XIANYU_PRODUCT_URL=https://your-xianyu-link
+
+
+# ========== 可选配置 ==========
+
+# 套餐模式 (true=多套餐选择, false=固定价格直接支付)
+ENABLE_MULTIPLE_PLANS=false
+
+# 客服链接
+CUSTOMER_SERVICE_URL=https://t.me/your_service
+
+# 欢迎图片 (留空则纯文字)
+WELCOME_IMAGE=
+
+# 欢迎消息
+WELCOME_MESSAGE="🎉 欢迎！立即购买会员享受专属服务"
 ```
 
-### 3. 配置会员套餐
+### 3. 配置套餐和价格
 
-编辑 `config.py` 中的 `MEMBERSHIP_PLANS`：
+编辑 `config.py`：
 
 ```python
+# 单套餐模式配置 (ENABLE_MULTIPLE_PLANS=false 时使用)
+DEFAULT_PLAN = {
+    'name': '会员',
+    'days': 30,
+    'price_usdt': 10.0,
+    'price_cny': 68.0
+}
+
+# 多套餐模式配置 (ENABLE_MULTIPLE_PLANS=true 时使用)
 MEMBERSHIP_PLANS = {
     'month': {
         'name': '月度会员',
@@ -100,297 +114,221 @@ MEMBERSHIP_PLANS = {
 }
 ```
 
-### 4. 设置 Bot 权限
-
-确保你的 Bot 在私有频道有以下权限：
-- ✅ 邀请用户
-- ✅ 发送消息
-
-### 5. 启动 Bot
+### 4. 启动 Bot
 
 ```bash
+# 直接运行
 python bot.py
+
+# 或使用 PM2 (推荐生产环境)
+pm2 start ecosystem.config.js
 ```
-
-## 📖 使用指南
-
-### 用户操作
-
-1. **开始使用**: `/start` - 打开主菜单
-2. **购买会员**: `/buy` 或点击"购买会员"按钮
-3. **选择套餐**: 月度/季度/年度
-4. **选择支付方式**:
-   - **USDT**: 扫码支付，自动到账
-   - **闲鱼**: 跳转闲鱼支付，提交订单号
-5. **查看订单**: `/orders` - 查看所有订单
-6. **会员状态**: `/status` - 查看会员到期时间
-
-### 管理员操作
-
-1. **管理面板**: `/admin` - 打开管理员面板
-2. **待审核订单**: `/pending` - 查看闲鱼待审核订单
-3. **审核流程**:
-   - 查看订单详情
-   - 前往闲鱼确认支付
-   - 点击"✅ 通过"或"❌ 拒绝"
-4. **用户管理**: 查看所有用户和会员状态
-5. **统计数据**: 查看收入、订单等统计
-6. **广告管理**: `/promo` - 打开广告管理面板 🆕
-   - 创建广告模板
-   - 批量发送广告
-   - 设置定时任务
-   - 查看发送记录
-
-## 🔧 配置说明
-
-### 获取 Telegram Bot Token
-
-1. 找 @BotFather 对话
-2. 发送 `/newbot`
-3. 按提示设置 Bot 名称
-4. 获取 Token
-
-### 获取 User ID
-
-1. 找 @userinfobot 对话
-2. 发送任意消息
-3. 获取你的 User ID
-
-### 获取频道 ID
-
-1. 创建私有频道
-2. 将 Bot 添加为管理员
-3. 找 @getidsbot，将它添加到频道
-4. 获取频道 ID（格式：-1001234567890）
-
-### 获取 TRON 地址
-
-1. 下载 TronLink 钱包
-2. 创建钱包
-3. 复制 TRON 地址（T 开头）
-
-### 获取 TronScan API Key
-
-1. 访问 https://tronscan.org
-2. 注册账号
-3. 进入 API Keys 页面
-4. 创建 API Key
-
-### 闲鱼商品设置
-
-1. 在闲鱼发布商品（设置不同价格对应不同套餐）
-2. 复制商品链接
-3. 填入配置文件
-
-## 📂 项目结构
-
-```
-TGBOT_payment/
-├── bot.py              # Bot 主程序
-├── config.py           # 配置文件
-├── database.py         # 数据库操作
-├── tron_payment.py     # TRON 支付模块
-├── requirements.txt    # 依赖包
-├── .env               # 环境变量（需手动创建）
-├── .env.example       # 环境变量模板
-├── README.md          # 说明文档
-├── payment_bot.db     # 主数据库（自动创建）
-├── tron_orders.db     # TRON 订单库（自动创建）
-└── bot.log           # 日志文件（自动创建）
-```
-
-## 💾 数据库设计
-
-### users 表
-- 用户基本信息
-- 会员状态和到期时间
-- 消费统计
-
-### orders 表
-- 订单详情
-- 支付信息（TRON 交易哈希、闲鱼订单号）
-- 订单状态流转
-
-### channel_invites 表
-- 频道邀请记录
-- 邀请状态
-
-### system_logs 表
-- 系统操作日志
-- 便于审计和调试
-
-## 🔒 安全建议
-
-1. ✅ **私钥保护**: TRON 私钥不存储在代码中
-2. ✅ **环境变量**: 敏感信息使用 `.env` 文件
-3. ✅ **管理员验证**: 所有管理操作需验证权限
-4. ✅ **防刷机制**: 限制下单频率和数量
-5. ✅ **日志记录**: 所有关键操作都有日志
-
-## 🛠️ 高级功能
-
-### 自定义欢迎消息
-
-编辑 `config.py` 中的 `WELCOME_MESSAGE`
-
-### 修改轮询间隔
-
-```python
-POLL_INTERVAL_SECONDS = 15  # TRON 支付轮询间隔
-```
-
-### 订单超时设置
-
-```python
-ORDER_TIMEOUT_MINUTES = 30  # 订单30分钟后超时
-```
-
-### 防刷限制
-
-```python
-MAX_PENDING_ORDERS_PER_USER = 3  # 每用户最多3个待支付订单
-MIN_ORDER_INTERVAL_SECONDS = 60  # 最小下单间隔60秒
-```
-
-## 📊 监控和维护
-
-### 查看日志
-
-```bash
-tail -f bot.log
-```
-
-### 备份数据库
-
-```bash
-cp payment_bot.db payment_bot_backup_$(date +%Y%m%d).db
-cp tron_orders.db tron_orders_backup_$(date +%Y%m%d).db
-```
-
-### 导出订单数据
-
-在 Python 中：
-
-```python
-from database import Database
-db = Database('payment_bot.db')
-stats = db.get_statistics()
-print(stats)
-```
-
-## ❓ 常见问题
-
-### Q: Bot 无法邀请用户到频道？
-A: 确保：
-1. Bot 在频道中是管理员
-2. Bot 有"邀请用户"权限
-3. 频道 ID 正确（包含 -100 前缀）
-
-### Q: TRON 支付不能自动确认？
-A: 检查：
-1. TronScan API Key 是否正确
-2. 收款地址是否正确
-3. 网络连接是否正常
-
-### Q: 如何添加新的套餐？
-A: 编辑 `config.py` 中的 `MEMBERSHIP_PLANS`，添加新套餐配置
-
-### Q: 如何更换数据库为 MySQL/MariaDB？
-A: 修改 `database.py`，将 SQLite 连接改为 MySQL 连接（需要 pymysql）
-
-### Q: 如何支持多语言？
-A: 将所有文本提取到独立的语言文件，根据用户语言加载
-
-## 🤝 支持
-
-如有问题或建议，请：
-- 提交 Issue
-- 联系开发者
-
-## 📄 许可
-
-MIT License
-
-## 🎯 TODO / 改进建议
-
-- [ ] 支持更多加密货币（ETH, BTC）
-- [ ] 多语言支持（英文、中文）
-- [ ] Web 管理后台
-- [ ] 优惠券系统
-- [ ] 推荐返利
-- [ ] 自动提醒续费
-- [ ] 会员等级系统
-- [ ] 数据可视化图表
-- [ ] 导出报表（Excel）
-- [ ] Webhook 通知
-- [ ] 邮件通知
-- [ ] 自动备份数据库
-
-## 💡 扩展思路
-
-### 1. 推荐返利系统
-
-```python
-# 添加推荐表
-CREATE TABLE referrals (
-    referrer_id INTEGER,
-    referee_id INTEGER,
-    reward_amount REAL,
-    created_at TIMESTAMP
-)
-
-# 用户邀请链接
-/start?ref=USER_ID
-```
-
-### 2. 多频道支持
-
-```python
-# 不同套餐对应不同频道
-MEMBERSHIP_PLANS = {
-    'basic': {
-        'channel_id': '-100111111',
-        ...
-    },
-    'premium': {
-        'channel_id': '-100222222',
-        ...
-    }
-}
-```
-
-### 3. 优惠券系统
-
-```python
-# 优惠券表
-CREATE TABLE coupons (
-    code TEXT PRIMARY KEY,
-    discount_percent INTEGER,
-    max_uses INTEGER,
-    expires_at TIMESTAMP
-)
-```
-
-### 4. 自动提醒续费
-
-```python
-# 定时任务：到期前3天提醒
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
-
-scheduler = AsyncIOScheduler()
-scheduler.add_job(check_expiring_members, 'interval', hours=24)
-```
-
-## 🌟 最佳实践
-
-1. **定期备份数据库**（每天自动备份）
-2. **监控日志文件**（防止异常错误）
-3. **测试环境验证**（生产前充分测试）
-4. **用户反馈收集**（持续优化体验）
-5. **安全更新**（及时更新依赖包）
 
 ---
 
-**祝您使用愉快！** 🎉
+## 📱 使用指南
 
+### 用户操作流程
 
+#### 单套餐模式 (ENABLE_MULTIPLE_PLANS=false)
+
+```
+/start
+  ↓
+欢迎页面
+  ├─ [💎 USDT 支付 - 10 USDT]  → 显示支付二维码 → 自动到账
+  └─ [🏪 闲鱼支付 - ¥68]       → 打开闲鱼 → 输入订单号 → 等待审核
+```
+
+#### 多套餐模式 (ENABLE_MULTIPLE_PLANS=true)
+
+```
+/start
+  ↓
+欢迎页面
+  ├─ [💎 USDT 支付]  → 选择套餐 → 显示支付二维码
+  └─ [🏪 闲鱼支付]   → 选择套餐 → 打开闲鱼 → 输入订单号
+```
+
+### 管理员操作
+
+| 命令 | 功能 |
+|------|------|
+| `/admin` | 打开管理员面板 |
+| `/pending` | 查看待审核订单 |
+| `/promo` | 广告管理面板 |
+| `/stats` | 查看统计数据 |
+
+---
+
+## 🛠️ 配置说明
+
+### 获取必要的 ID
+
+#### 1. Bot Token
+1. 在 Telegram 中找到 `@BotFather`
+2. 发送 `/newbot` 创建新 Bot
+3. 复制获得的 Token
+
+#### 2. User ID
+1. 在 Telegram 中找到 `@userinfobot`
+2. 发送任意消息
+3. 复制你的 User ID
+
+#### 3. 频道 ID
+1. 创建一个私有频道
+2. 将 Bot 添加为频道管理员
+3. 转发频道消息给 `@userinfobot`
+4. 复制 Channel ID（以 -100 开头）
+
+#### 4. TRON 地址
+- 使用支持 TRC20 的钱包（如 TronLink）
+- 复制你的 TRON 地址（T 开头）
+
+#### 5. TronScan API Key
+1. 访问 https://tronscan.org
+2. 注册账号
+3. 在 API 页面创建 API Key
+
+---
+
+## 📸 广告系统使用
+
+### 创建广告模板
+
+```
+/promo
+  ↓
+[创建广告模板]
+  ↓
+输入模板名称 → 输入广告内容 → (可选)发送图片 → 添加按钮
+```
+
+### 发送广告
+
+```
+[广告管理] → [批量发送] → 选择模板 → 选择目标(用户/频道)
+```
+
+### 定时发送
+
+```
+[广告管理] → [定时发送] → 选择模板 → 设置时间 → 选择目标
+```
+
+---
+
+## 🔧 高级配置
+
+### 套餐模式选择建议
+
+| 场景 | 推荐模式 | 原因 |
+|-----|---------|------|
+| 只有一个会员套餐 | 单套餐 (false) | 流程最简洁，用户体验最好 |
+| 有多个套餐选择 | 多套餐 (true) | 灵活选择，满足不同需求 |
+| 频繁调整价格 | 单套餐 (false) | 配置简单，只需修改一处 |
+
+### Ubuntu 24.04 部署
+
+Ubuntu 24.04 需要使用虚拟环境：
+
+```bash
+# 创建虚拟环境
+python3 -m venv venv
+
+# 激活虚拟环境
+source venv/bin/activate
+
+# 安装依赖
+pip install -r requirements.txt
+
+# 配置 PM2 使用虚拟环境
+# 编辑 ecosystem.config.js
+{
+  "interpreter": "/path/to/your/venv/bin/python"
+}
+
+# 启动
+pm2 start ecosystem.config.js
+```
+
+---
+
+## 📊 数据库
+
+Bot 使用 SQLite 数据库，文件名：`payment_bot.db`
+
+**无需手动创建**，Bot 会在首次运行时自动创建所有必要的表。
+
+---
+
+## 🆘 常见问题
+
+### Q: 闲鱼支付能自动登录吗？
+
+A: **不能**。Bot 无法自动帮用户登录闲鱼。用户需要在浏览器中手动登录。如果用户已在浏览器登录过闲鱼，通常会保持登录状态。
+
+### Q: USDT 支付多久到账？
+
+A: 通常 1-5 分钟。Bot 每 15 秒检查一次链上交易。
+
+### Q: 如何修改会员价格？
+
+**单套餐模式**：修改 `config.py` 中的 `DEFAULT_PLAN`
+
+**多套餐模式**：修改 `config.py` 中的 `MEMBERSHIP_PLANS`
+
+### Q: 如何更换欢迎图片？
+
+1. 向 Bot 发送图片
+2. 在日志中获取 `file_id`
+3. 将 `file_id` 填入 `.env` 的 `WELCOME_IMAGE`
+4. 重启 Bot
+
+### Q: 数据库在哪里？
+
+默认在项目根目录：`payment_bot.db`
+
+可在 `.env` 中修改：`DATABASE_PATH=/path/to/your.db`
+
+---
+
+## 📁 文件说明
+
+```
+TGBOT_payment/
+├── bot.py                 # 主程序
+├── config.py              # 配置文件
+├── database.py            # 数据库操作
+├── tron_payment.py        # TRON 支付处理
+├── requirements.txt       # 依赖列表
+├── .env                   # 环境变量 (需自己创建)
+├── payment_bot.db         # 数据库 (自动生成)
+├── ecosystem.config.js    # PM2 配置
+├── README.md              # 本文件
+├── QUICKSTART.md          # 快速开始详细版
+└── PROMO_GUIDE.md         # 广告功能详细指南
+```
+
+---
+
+## 🔗 相关链接
+
+- [详细快速开始指南](QUICKSTART.md) - 更详细的部署步骤
+- [广告功能完整指南](PROMO_GUIDE.md) - 广告系统的详细使用方法
+- [python-telegram-bot 文档](https://python-telegram-bot.org/)
+- [TRON 网络文档](https://developers.tron.network/)
+
+---
+
+## 📄 开源协议
+
+MIT License
+
+---
+
+## 💡 技术支持
+
+如有问题，请提 Issue 或查看文档。
+
+**祝您使用愉快！** 🚀
