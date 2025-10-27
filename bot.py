@@ -437,7 +437,10 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         keyboard = [
             [InlineKeyboardButton("🛒 打开闲鱼商品", url=XIANYU_PRODUCT_URL)],
-            [InlineKeyboardButton("❌ 取消订单", callback_data=f"cancel_order_{order_id}")]
+            [
+                InlineKeyboardButton("« 返回", callback_data="back_to_main"),
+                InlineKeyboardButton("❌ 取消订单", callback_data=f"cancel_order_{order_id}")
+            ]
         ]
         await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
     
@@ -731,8 +734,68 @@ USDT: {stats['total_usdt']:.2f}
         reply_markup = InlineKeyboardMarkup(keyboard)
         await query.edit_message_text("📤 选择要发送的广告模板：", reply_markup=reply_markup)
     
+    # 取消订单
+    elif data.startswith("cancel_order_"):
+        order_id = data.replace("cancel_order_", "")
+        order = db.get_order(order_id)
+        
+        if not order:
+            await query.answer("❌ 订单不存在", show_alert=True)
+            return
+        
+        if order['user_id'] != user_id:
+            await query.answer("❌ 这不是您的订单", show_alert=True)
+            return
+        
+        if order['status'] != 'pending':
+            await query.answer("❌ 该订单无法取消", show_alert=True)
+            return
+        
+        # 更新订单状态为已取消
+        db.update_order_status(order_id, 'cancelled')
+        
+        # 清除用户状态
+        if user_id in user_states:
+            del user_states[user_id]
+        
+        await query.answer("✅ 订单已取消", show_alert=True)
+        
+        # 返回主菜单
+        welcome_text = WELCOME_MESSAGE
+        keyboard = []
+        
+        if ENABLE_MULTIPLE_PLANS:
+            usdt_btn_text = "💎 USDT 支付"
+            xianyu_btn_text = "🏪 闲鱼支付"
+        else:
+            usdt_btn_text = f"💎 USDT 支付 - {DEFAULT_PLAN['price_usdt']} USDT"
+            xianyu_btn_text = f"🏪 闲鱼支付 - ¥{DEFAULT_PLAN['price_cny']}"
+        
+        keyboard.append([
+            InlineKeyboardButton(usdt_btn_text, callback_data="direct_usdt_payment"),
+            InlineKeyboardButton(xianyu_btn_text, callback_data="direct_xianyu_payment")
+        ])
+        keyboard.append([
+            InlineKeyboardButton("📋 我的订单", callback_data="my_orders"),
+            InlineKeyboardButton("👤 会员状态", callback_data="my_status")
+        ])
+        keyboard.append([
+            InlineKeyboardButton("👨‍💼 联系客服", url=CUSTOMER_SERVICE_URL),
+            InlineKeyboardButton("❓ 使用帮助", callback_data="help")
+        ])
+        
+        if is_admin(user_id):
+            keyboard.append([InlineKeyboardButton("👑 管理员面板", callback_data="admin_panel")])
+        
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await query.edit_message_text(welcome_text, reply_markup=reply_markup)
+    
     # 返回主菜单
     elif data == "back_to_main":
+        # 清除用户状态
+        if user_id in user_states:
+            del user_states[user_id]
+        
         # 使用自定义欢迎消息
         welcome_text = WELCOME_MESSAGE
         
@@ -771,9 +834,26 @@ USDT: {stats['total_usdt']:.2f}
         
         reply_markup = InlineKeyboardMarkup(keyboard)
         
-        # 注意：edit_message 不支持添加图片，只能编辑文字
-        # 如果需要显示图片，需要删除旧消息并发送新消息
-        await query.edit_message_text(welcome_text, reply_markup=reply_markup)
+        # 判断当前消息是否有照片（如USDT支付页面）
+        try:
+            if query.message.photo:
+                # 如果是图片消息，发送新消息并删除旧消息
+                await context.bot.send_message(
+                    chat_id=user_id,
+                    text=welcome_text,
+                    reply_markup=reply_markup
+                )
+                await query.message.delete()
+            else:
+                # 普通文本消息，直接编辑
+                await query.edit_message_text(welcome_text, reply_markup=reply_markup)
+        except Exception as e:
+            # 如果编辑失败（如消息太旧），发送新消息
+            await context.bot.send_message(
+                chat_id=user_id,
+                text=welcome_text,
+                reply_markup=reply_markup
+            )
 
 
 # ========== 业务逻辑函数 ==========
@@ -990,7 +1070,10 @@ async def create_xianyu_order_direct(update: Update, context: ContextTypes.DEFAU
     
     keyboard = [
         [InlineKeyboardButton("🛒 打开闲鱼商品", url=XIANYU_PRODUCT_URL)],
-        [InlineKeyboardButton("❌ 取消订单", callback_data=f"cancel_order_{order_id}")]
+        [
+            InlineKeyboardButton("« 返回", callback_data="back_to_main"),
+            InlineKeyboardButton("❌ 取消订单", callback_data=f"cancel_order_{order_id}")
+        ]
     ]
     await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
 
@@ -1050,7 +1133,10 @@ async def process_tron_payment(update: Update, context: ContextTypes.DEFAULT_TYP
         keyboard = [
             [InlineKeyboardButton("✅ 我已支付", callback_data=f"check_payment_{order_id}")],
             [InlineKeyboardButton("📋 查看订单", callback_data=f"view_order_{order_id}")],
-            [InlineKeyboardButton("« 返回", callback_data="back_to_main")]
+            [
+                InlineKeyboardButton("« 返回主菜单", callback_data="back_to_main"),
+                InlineKeyboardButton("❌ 取消订单", callback_data=f"cancel_order_{order_id}")
+            ]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         
@@ -1117,7 +1203,10 @@ async def process_xianyu_payment(update: Update, context: ContextTypes.DEFAULT_T
     
     keyboard = [
         [InlineKeyboardButton("🛒 前往闲鱼支付", url=XIANYU_PRODUCT_URL)],
-        [InlineKeyboardButton("❌ 取消订单", callback_data=f"cancel_order_{order_id}")]
+        [
+            InlineKeyboardButton("« 返回", callback_data="back_to_main"),
+            InlineKeyboardButton("❌ 取消订单", callback_data=f"cancel_order_{order_id}")
+        ]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
