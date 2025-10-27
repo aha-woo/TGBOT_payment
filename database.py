@@ -104,6 +104,65 @@ class Database:
                 )
             ''')
             
+            # 广告模板表
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS promo_templates (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL,
+                    message TEXT NOT NULL,
+                    image_file_id TEXT,
+                    button_text TEXT,
+                    button_url TEXT,
+                    created_by INTEGER NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    is_active BOOLEAN DEFAULT 1
+                )
+            ''')
+            
+            # 为旧数据库添加 image_file_id 字段（如果不存在）
+            try:
+                cursor.execute("ALTER TABLE promo_templates ADD COLUMN image_file_id TEXT")
+                conn.commit()
+                logger.info("Added image_file_id column to promo_templates table")
+            except sqlite3.OperationalError:
+                # 字段已存在，跳过
+                pass
+            
+            # 定时任务表
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS scheduled_tasks (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    template_id INTEGER NOT NULL,
+                    target_chats TEXT NOT NULL,
+                    scheduled_time TIMESTAMP NOT NULL,
+                    status TEXT DEFAULT 'pending',
+                    created_by INTEGER NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    executed_at TIMESTAMP,
+                    result TEXT,
+                    
+                    FOREIGN KEY (template_id) REFERENCES promo_templates(id)
+                )
+            ''')
+            
+            # 广告发送记录表
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS promo_logs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    task_id INTEGER,
+                    template_id INTEGER NOT NULL,
+                    target_chat TEXT NOT NULL,
+                    sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    status TEXT NOT NULL,
+                    message_id INTEGER,
+                    error_message TEXT,
+                    
+                    FOREIGN KEY (task_id) REFERENCES scheduled_tasks(id),
+                    FOREIGN KEY (template_id) REFERENCES promo_templates(id)
+                )
+            ''')
+            
             # 创建索引
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_orders_user_id ON orders(user_id)')
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status)')
@@ -487,5 +546,218 @@ class Database:
             """, (log_type, user_id, order_id, message))
             conn.commit()
             conn.close()
+    
+    # ========== 广告模板操作 ==========
+    
+    def create_promo_template(self, name: str, message: str, button_text: str = None, 
+                             button_url: str = None, created_by: int = None, image_file_id: str = None) -> int:
+        """创建广告模板"""
+        with self.lock:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO promo_templates (name, message, image_file_id, button_text, button_url, created_by)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (name, message, image_file_id, button_text, button_url, created_by))
+            template_id = cursor.lastrowid
+            conn.commit()
+            conn.close()
+            return template_id
+    
+    def get_promo_template(self, template_id: int) -> Optional[Dict[str, Any]]:
+        """获取广告模板"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM promo_templates WHERE id=?", (template_id,))
+        row = cursor.fetchone()
+        conn.close()
+        
+        if row:
+            columns = [desc[0] for desc in cursor.description]
+            return dict(zip(columns, row))
+        return None
+    
+    def get_all_promo_templates(self, active_only: bool = True) -> List[Dict[str, Any]]:
+        """获取所有广告模板"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        if active_only:
+            cursor.execute("SELECT * FROM promo_templates WHERE is_active=1 ORDER BY created_at DESC")
+        else:
+            cursor.execute("SELECT * FROM promo_templates ORDER BY created_at DESC")
+        
+        rows = cursor.fetchall()
+        conn.close()
+        
+        columns = [desc[0] for desc in cursor.description]
+        return [dict(zip(columns, row)) for row in rows]
+    
+    def update_promo_template(self, template_id: int, name: str = None, message: str = None,
+                             button_text: str = None, button_url: str = None, image_file_id: str = None):
+        """更新广告模板"""
+        with self.lock:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            
+            updates = []
+            params = []
+            
+            if name is not None:
+                updates.append("name=?")
+                params.append(name)
+            if message is not None:
+                updates.append("message=?")
+                params.append(message)
+            if image_file_id is not None:
+                updates.append("image_file_id=?")
+                params.append(image_file_id)
+            if button_text is not None:
+                updates.append("button_text=?")
+                params.append(button_text)
+            if button_url is not None:
+                updates.append("button_url=?")
+                params.append(button_url)
+            
+            if updates:
+                updates.append("updated_at=?")
+                params.append(datetime.now())
+                params.append(template_id)
+                
+                cursor.execute(f"""
+                    UPDATE promo_templates SET {', '.join(updates)}
+                    WHERE id=?
+                """, params)
+                conn.commit()
+            
+            conn.close()
+    
+    def delete_promo_template(self, template_id: int):
+        """删除广告模板（软删除）"""
+        with self.lock:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            cursor.execute("UPDATE promo_templates SET is_active=0 WHERE id=?", (template_id,))
+            conn.commit()
+            conn.close()
+    
+    # ========== 定时任务操作 ==========
+    
+    def create_scheduled_task(self, template_id: int, target_chats: str, 
+                             scheduled_time: datetime, created_by: int) -> int:
+        """创建定时任务"""
+        with self.lock:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO scheduled_tasks (template_id, target_chats, scheduled_time, created_by)
+                VALUES (?, ?, ?, ?)
+            """, (template_id, target_chats, scheduled_time, created_by))
+            task_id = cursor.lastrowid
+            conn.commit()
+            conn.close()
+            return task_id
+    
+    def get_scheduled_task(self, task_id: int) -> Optional[Dict[str, Any]]:
+        """获取定时任务"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM scheduled_tasks WHERE id=?", (task_id,))
+        row = cursor.fetchone()
+        conn.close()
+        
+        if row:
+            columns = [desc[0] for desc in cursor.description]
+            return dict(zip(columns, row))
+        return None
+    
+    def get_pending_tasks(self) -> List[Dict[str, Any]]:
+        """获取待执行的任务"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT * FROM scheduled_tasks 
+            WHERE status='pending' AND scheduled_time <= ?
+            ORDER BY scheduled_time ASC
+        """, (datetime.now(),))
+        rows = cursor.fetchall()
+        conn.close()
+        
+        columns = [desc[0] for desc in cursor.description]
+        return [dict(zip(columns, row)) for row in rows]
+    
+    def get_all_scheduled_tasks(self, status: str = None) -> List[Dict[str, Any]]:
+        """获取所有定时任务"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        if status:
+            cursor.execute("SELECT * FROM scheduled_tasks WHERE status=? ORDER BY scheduled_time DESC", (status,))
+        else:
+            cursor.execute("SELECT * FROM scheduled_tasks ORDER BY scheduled_time DESC")
+        
+        rows = cursor.fetchall()
+        conn.close()
+        
+        columns = [desc[0] for desc in cursor.description]
+        return [dict(zip(columns, row)) for row in rows]
+    
+    def update_task_status(self, task_id: int, status: str, result: str = None):
+        """更新任务状态"""
+        with self.lock:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            
+            if status in ['completed', 'failed']:
+                cursor.execute("""
+                    UPDATE scheduled_tasks 
+                    SET status=?, executed_at=?, result=?
+                    WHERE id=?
+                """, (status, datetime.now(), result, task_id))
+            else:
+                cursor.execute("""
+                    UPDATE scheduled_tasks 
+                    SET status=?, result=?
+                    WHERE id=?
+                """, (status, result, task_id))
+            
+            conn.commit()
+            conn.close()
+    
+    def cancel_scheduled_task(self, task_id: int):
+        """取消定时任务"""
+        self.update_task_status(task_id, 'cancelled')
+    
+    # ========== 广告发送记录 ==========
+    
+    def add_promo_log(self, template_id: int, target_chat: str, status: str,
+                     task_id: int = None, message_id: int = None, error_message: str = None):
+        """添加广告发送记录"""
+        with self.lock:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO promo_logs (task_id, template_id, target_chat, status, message_id, error_message)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (task_id, template_id, target_chat, status, message_id, error_message))
+            conn.commit()
+            conn.close()
+    
+    def get_promo_logs(self, limit: int = 50) -> List[Dict[str, Any]]:
+        """获取广告发送记录"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT pl.*, pt.name as template_name
+            FROM promo_logs pl
+            LEFT JOIN promo_templates pt ON pl.template_id = pt.id
+            ORDER BY pl.sent_at DESC
+            LIMIT ?
+        """, (limit,))
+        rows = cursor.fetchall()
+        conn.close()
+        
+        columns = [desc[0] for desc in cursor.description]
+        return [dict(zip(columns, row)) for row in rows]
 
 

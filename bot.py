@@ -263,6 +263,7 @@ USDT: {stats['total_usdt']:.2f}
         [InlineKeyboardButton("📋 待审核订单", callback_data="admin_pending_orders")],
         [InlineKeyboardButton("👥 用户列表", callback_data="admin_users")],
         [InlineKeyboardButton("📊 详细统计", callback_data="admin_stats")],
+        [InlineKeyboardButton("📢 广告管理", callback_data="promo_manage")],
         [InlineKeyboardButton("🔄 刷新", callback_data="admin_panel")]
     ]
     
@@ -277,6 +278,15 @@ async def pending_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     await show_pending_orders(update, context)
+
+
+async def promo_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """广告管理命令"""
+    if not is_admin(update.effective_user.id):
+        await update.message.reply_text("⛔ 您没有权限")
+        return
+    
+    await show_promo_menu(update, context)
 
 
 # ========== 回调处理 ==========
@@ -442,6 +452,150 @@ USDT: {stats['total_usdt']:.2f}
         keyboard = [[InlineKeyboardButton("« 返回", callback_data="admin_panel")]]
         reply_markup = InlineKeyboardMarkup(keyboard)
         await query.edit_message_text(text, reply_markup=reply_markup)
+    
+    # 广告管理功能
+    elif data == "promo_manage":
+        if not is_admin(user_id):
+            await query.answer("⛔ 您没有权限", show_alert=True)
+            return
+        
+        await show_promo_menu(update, context, query=query)
+    
+    elif data == "promo_list_templates":
+        if not is_admin(user_id):
+            await query.answer("⛔ 您没有权限", show_alert=True)
+            return
+        
+        await show_promo_templates(update, context, query=query)
+    
+    elif data == "promo_list_tasks":
+        if not is_admin(user_id):
+            await query.answer("⛔ 您没有权限", show_alert=True)
+            return
+        
+        await show_scheduled_tasks(update, context, query=query)
+    
+    elif data == "promo_logs":
+        if not is_admin(user_id):
+            await query.answer("⛔ 您没有权限", show_alert=True)
+            return
+        
+        await show_promo_logs(update, context, query=query)
+    
+    elif data == "promo_create_template":
+        if not is_admin(user_id):
+            await query.answer("⛔ 您没有权限", show_alert=True)
+            return
+        
+        user_states[user_id] = {'action': 'create_promo_template', 'step': 'name'}
+        await query.edit_message_text(
+            "📝 创建广告模板\n\n"
+            "步骤 1/4: 请输入模板名称（用于识别）：\n\n"
+            "发送 /cancel 取消创建"
+        )
+    
+    elif data == "promo_create_task":
+        if not is_admin(user_id):
+            await query.answer("⛔ 您没有权限", show_alert=True)
+            return
+        
+        templates = db.get_all_promo_templates(active_only=True)
+        if not templates:
+            await query.answer("❌ 请先创建广告模板", show_alert=True)
+            await show_promo_menu(update, context, query=query)
+            return
+        
+        keyboard = []
+        for tmpl in templates:
+            keyboard.append([InlineKeyboardButton(
+                tmpl['name'],
+                callback_data=f"promo_task_select_template_{tmpl['id']}"
+            )])
+        keyboard.append([InlineKeyboardButton("« 返回", callback_data="promo_manage")])
+        
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await query.edit_message_text("⏰ 选择要使用的广告模板：", reply_markup=reply_markup)
+    
+    elif data.startswith("promo_task_select_template_"):
+        if not is_admin(user_id):
+            await query.answer("⛔ 您没有权限", show_alert=True)
+            return
+        
+        template_id = int(data.replace("promo_task_select_template_", ""))
+        user_states[user_id] = {
+            'action': 'create_scheduled_task',
+            'template_id': template_id,
+            'step': 'target_chats'
+        }
+        await query.edit_message_text(
+            "⏰ 创建定时任务\n\n"
+            "步骤 1/2: 请输入目标频道/群组 ID\n\n"
+            "格式：\n"
+            "• 单个: @channel 或 -1001234567890\n"
+            "• 多个: @channel1,@channel2,-1001234567890\n\n"
+            "发送 /cancel 取消创建"
+        )
+    
+    elif data.startswith("promo_use_template_"):
+        if not is_admin(user_id):
+            await query.answer("⛔ 您没有权限", show_alert=True)
+            return
+        
+        template_id = int(data.replace("promo_use_template_", ""))
+        user_states[user_id] = {
+            'action': 'send_promo_now',
+            'template_id': template_id
+        }
+        await query.edit_message_text(
+            "📤 立即发送广告\n\n"
+            "请输入目标频道/群组 ID\n\n"
+            "格式：\n"
+            "• 单个: @channel 或 -1001234567890\n"
+            "• 多个: @channel1,@channel2,-1001234567890\n\n"
+            "发送 /cancel 取消发送"
+        )
+    
+    elif data.startswith("promo_delete_template_"):
+        if not is_admin(user_id):
+            await query.answer("⛔ 您没有权限", show_alert=True)
+            return
+        
+        template_id = int(data.replace("promo_delete_template_", ""))
+        db.delete_promo_template(template_id)
+        await query.answer("✅ 模板已删除", show_alert=True)
+        await show_promo_templates(update, context, query=query)
+    
+    elif data.startswith("promo_cancel_task_"):
+        if not is_admin(user_id):
+            await query.answer("⛔ 您没有权限", show_alert=True)
+            return
+        
+        task_id = int(data.replace("promo_cancel_task_", ""))
+        db.cancel_scheduled_task(task_id)
+        await query.answer("✅ 任务已取消", show_alert=True)
+        await show_scheduled_tasks(update, context, query=query)
+    
+    elif data == "promo_send_now":
+        if not is_admin(user_id):
+            await query.answer("⛔ 您没有权限", show_alert=True)
+            return
+        
+        templates = db.get_all_promo_templates(active_only=True)
+        if not templates:
+            await query.answer("❌ 请先创建广告模板", show_alert=True)
+            await show_promo_menu(update, context, query=query)
+            return
+        
+        keyboard = []
+        for tmpl in templates:
+            keyboard.append([InlineKeyboardButton(
+                tmpl['name'],
+                callback_data=f"promo_use_template_{tmpl['id']}"
+            )])
+        keyboard.append([InlineKeyboardButton("« 返回", callback_data="promo_manage")])
+        
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await query.edit_message_text("📤 选择要发送的广告模板：", reply_markup=reply_markup)
     
     # 返回主菜单
     elif data == "back_to_main":
@@ -802,7 +956,220 @@ async def reject_order(update: Update, context: ContextTypes.DEFAULT_TYPE, order
     db.add_log('order_rejected', order['user_id'], order_id, 'Order rejected by admin')
 
 
+# ========== 广告管理功能 ==========
+
+async def show_promo_menu(update: Update, context: ContextTypes.DEFAULT_TYPE, query=None):
+    """显示广告管理菜单"""
+    templates = db.get_all_promo_templates(active_only=True)
+    tasks = db.get_all_scheduled_tasks(status='pending')
+    
+    text = f"""📢 广告管理
+
+📝 广告模板: {len(templates)} 个
+⏰ 待发送任务: {len(tasks)} 个
+
+选择操作："""
+    
+    keyboard = [
+        [InlineKeyboardButton("➕ 创建广告模板", callback_data="promo_create_template")],
+        [InlineKeyboardButton("📝 查看模板列表", callback_data="promo_list_templates")],
+        [InlineKeyboardButton("⏰ 创建定时任务", callback_data="promo_create_task")],
+        [InlineKeyboardButton("📋 查看任务列表", callback_data="promo_list_tasks")],
+        [InlineKeyboardButton("📤 立即发送广告", callback_data="promo_send_now")],
+        [InlineKeyboardButton("📊 发送记录", callback_data="promo_logs")],
+        [InlineKeyboardButton("🔙 返回管理面板", callback_data="admin_panel")]
+    ]
+    
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    if query:
+        await query.edit_message_text(text, reply_markup=reply_markup)
+    else:
+        await update.message.reply_text(text, reply_markup=reply_markup)
+
+
+async def show_promo_templates(update: Update, context: ContextTypes.DEFAULT_TYPE, query=None):
+    """显示广告模板列表"""
+    templates = db.get_all_promo_templates(active_only=True)
+    
+    if not templates:
+        text = "📝 还没有创建任何广告模板\n\n点击下方按钮创建第一个模板："
+        keyboard = [
+            [InlineKeyboardButton("➕ 创建模板", callback_data="promo_create_template")],
+            [InlineKeyboardButton("🔙 返回", callback_data="promo_manage")]
+        ]
+    else:
+        text = "📝 广告模板列表：\n\n"
+        keyboard = []
+        
+        for tmpl in templates:
+            text += f"🔹 {tmpl['name']}\n"
+            text += f"   ID: {tmpl['id']} | 创建时间: {tmpl['created_at']}\n\n"
+            keyboard.append([
+                InlineKeyboardButton(f"📤 {tmpl['name']}", callback_data=f"promo_use_template_{tmpl['id']}"),
+                InlineKeyboardButton("✏️", callback_data=f"promo_edit_template_{tmpl['id']}"),
+                InlineKeyboardButton("🗑️", callback_data=f"promo_delete_template_{tmpl['id']}")
+            ])
+        
+        keyboard.append([InlineKeyboardButton("➕ 创建新模板", callback_data="promo_create_template")])
+        keyboard.append([InlineKeyboardButton("🔙 返回", callback_data="promo_manage")])
+    
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    if query:
+        await query.edit_message_text(text, reply_markup=reply_markup)
+    else:
+        await update.message.reply_text(text, reply_markup=reply_markup)
+
+
+async def show_scheduled_tasks(update: Update, context: ContextTypes.DEFAULT_TYPE, query=None):
+    """显示定时任务列表"""
+    tasks = db.get_all_scheduled_tasks()
+    
+    if not tasks:
+        text = "⏰ 还没有创建任何定时任务\n\n点击下方按钮创建任务："
+        keyboard = [
+            [InlineKeyboardButton("➕ 创建任务", callback_data="promo_create_task")],
+            [InlineKeyboardButton("🔙 返回", callback_data="promo_manage")]
+        ]
+    else:
+        text = "⏰ 定时任务列表：\n\n"
+        keyboard = []
+        
+        for task in tasks[:10]:  # 只显示前10个
+            template = db.get_promo_template(task['template_id'])
+            template_name = template['name'] if template else '未知模板'
+            
+            status_emoji = {
+                'pending': '⏳',
+                'completed': '✅',
+                'failed': '❌',
+                'cancelled': '🚫'
+            }.get(task['status'], '❓')
+            
+            text += f"{status_emoji} {template_name}\n"
+            text += f"   发送时间: {task['scheduled_time']}\n"
+            text += f"   状态: {task['status']}\n\n"
+            
+            if task['status'] == 'pending':
+                keyboard.append([
+                    InlineKeyboardButton(f"查看 #{task['id']}", callback_data=f"promo_view_task_{task['id']}"),
+                    InlineKeyboardButton("🚫 取消", callback_data=f"promo_cancel_task_{task['id']}")
+                ])
+        
+        keyboard.append([InlineKeyboardButton("➕ 创建新任务", callback_data="promo_create_task")])
+        keyboard.append([InlineKeyboardButton("🔙 返回", callback_data="promo_manage")])
+    
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    if query:
+        await query.edit_message_text(text, reply_markup=reply_markup)
+    else:
+        await update.message.reply_text(text, reply_markup=reply_markup)
+
+
+async def show_promo_logs(update: Update, context: ContextTypes.DEFAULT_TYPE, query=None):
+    """显示广告发送记录"""
+    logs = db.get_promo_logs(limit=20)
+    
+    if not logs:
+        text = "📊 还没有发送记录"
+    else:
+        text = "📊 最近发送记录：\n\n"
+        
+        for log in logs:
+            status_emoji = '✅' if log['status'] == 'success' else '❌'
+            text += f"{status_emoji} {log['template_name']}\n"
+            text += f"   目标: {log['target_chat']}\n"
+            text += f"   时间: {log['sent_at']}\n"
+            if log['error_message']:
+                text += f"   错误: {log['error_message']}\n"
+            text += "\n"
+    
+    keyboard = [[InlineKeyboardButton("🔙 返回", callback_data="promo_manage")]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    if query:
+        await query.edit_message_text(text, reply_markup=reply_markup)
+    else:
+        await update.message.reply_text(text, reply_markup=reply_markup)
+
+
+async def send_promo_message(app: Application, template_id: int, target_chat: str, task_id: int = None) -> bool:
+    """发送广告消息到指定频道/群组"""
+    try:
+        template = db.get_promo_template(template_id)
+        if not template:
+            db.add_promo_log(template_id, target_chat, 'failed', task_id, error_message='Template not found')
+            return False
+        
+        # 创建按钮
+        keyboard = None
+        if template['button_text'] and template['button_url']:
+            keyboard = [[InlineKeyboardButton(template['button_text'], url=template['button_url'])]]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+        else:
+            reply_markup = None
+        
+        # 判断是否有图片
+        if template.get('image_file_id'):
+            # 有图片：发送图片消息
+            caption = template['message'] if template['message'] else None
+            sent_message = await app.bot.send_photo(
+                chat_id=target_chat,
+                photo=template['image_file_id'],
+                caption=caption,
+                reply_markup=reply_markup
+            )
+        else:
+            # 无图片：发送纯文字消息
+            sent_message = await app.bot.send_message(
+                chat_id=target_chat,
+                text=template['message'],
+                reply_markup=reply_markup
+            )
+        
+        # 记录成功
+        db.add_promo_log(template_id, target_chat, 'success', task_id, message_id=sent_message.message_id)
+        logger.info(f"Promo message sent to {target_chat}: template {template_id}")
+        return True
+        
+    except TelegramError as e:
+        # 记录失败
+        db.add_promo_log(template_id, target_chat, 'failed', task_id, error_message=str(e))
+        logger.error(f"Failed to send promo to {target_chat}: {e}")
+        return False
+
+
 # ========== 消息处理 ==========
+
+async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """处理图片消息"""
+    user_id = update.effective_user.id
+    
+    # 检查用户状态
+    if user_id in user_states:
+        state = user_states[user_id]
+        
+        # 只在创建模板的图片步骤接受图片
+        if state.get('action') == 'create_promo_template' and state.get('step') == 'image':
+            # 获取最大尺寸的图片
+            photo = update.message.photo[-1]
+            state['image_file_id'] = photo.file_id
+            state['step'] = 'message'
+            
+            await update.message.reply_text(
+                "✅ 图片已保存\n\n"
+                "步骤 3/5: 请输入广告文字内容（可选）：\n\n"
+                "（可以包含 emoji、换行等）\n\n"
+                "发送 - 跳过（仅图片）\n"
+                "发送 /cancel 取消创建"
+            )
+            return
+    
+    # 其他情况提示
+    await update.message.reply_text("❓ 当前不需要图片，请使用命令与我交互")
+
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """处理普通消息"""
@@ -845,6 +1212,210 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             del user_states[user_id]
             
             db.add_log('xianyu_order_submitted', user_id, order_id, f'Xianyu order number: {xianyu_order}')
+            return
+        
+        elif state['action'] == 'create_promo_template':
+            # 处理创建广告模板
+            if text and text.strip() == '/cancel':
+                del user_states[user_id]
+                await update.message.reply_text("❌ 已取消创建")
+                return
+            
+            if state['step'] == 'name':
+                state['name'] = text.strip()
+                state['step'] = 'image'
+                await update.message.reply_text(
+                    f"✅ 模板名称：{state['name']}\n\n"
+                    "步骤 2/5: 请发送一张图片（可选）\n\n"
+                    "📸 发送图片 - 添加宣传图\n"
+                    "📝 发送 - 跳过（无图片）\n"
+                    "🚫 发送 /cancel 取消创建"
+                )
+                return
+            
+            elif state['step'] == 'image':
+                # 检查是否跳过图片
+                if text and text.strip() == '-':
+                    state['image_file_id'] = None
+                    state['step'] = 'message'
+                    await update.message.reply_text(
+                        "✅ 跳过图片\n\n"
+                        "步骤 3/5: 请输入广告文字内容：\n\n"
+                        "（可以包含 emoji、换行等）\n\n"
+                        "发送 /cancel 取消创建"
+                    )
+                else:
+                    await update.message.reply_text(
+                        "❓ 请发送图片或发送 - 跳过"
+                    )
+                return
+            
+            elif state['step'] == 'message':
+                if text.strip() == '-' and state.get('image_file_id'):
+                    # 有图片，可以跳过文字
+                    state['message'] = ''
+                else:
+                    state['message'] = text.strip()
+                
+                state['step'] = 'button_text'
+                has_content = "图片" if state.get('image_file_id') else ""
+                if state['message']:
+                    has_content += ("+" if has_content else "") + "文字"
+                
+                await update.message.reply_text(
+                    f"✅ 内容已保存（{has_content}）\n\n"
+                    "步骤 4/5: 请输入按钮文字\n\n"
+                    "（如：💳 立即购买）\n\n"
+                    "发送 - 跳过（无按钮）\n"
+                    "发送 /cancel 取消创建"
+                )
+                return
+            
+            elif state['step'] == 'button_text':
+                if text.strip() == '-':
+                    # 无按钮，直接创建
+                    template_id = db.create_promo_template(
+                        name=state['name'],
+                        message=state['message'],
+                        image_file_id=state.get('image_file_id'),
+                        created_by=user_id
+                    )
+                    del user_states[user_id]
+                    
+                    has_image = "✅" if state.get('image_file_id') else "❌"
+                    has_text = "✅" if state['message'] else "❌"
+                    
+                    await update.message.reply_text(
+                        f"✅ 广告模板创建成功！\n\n"
+                        f"模板ID: {template_id}\n"
+                        f"模板名称: {state['name']}\n"
+                        f"图片: {has_image}\n"
+                        f"文字: {has_text}\n"
+                        f"按钮: ❌\n\n"
+                        "使用 /promo 管理广告"
+                    )
+                else:
+                    state['button_text'] = text.strip()
+                    state['step'] = 'button_url'
+                    await update.message.reply_text(
+                        f"✅ 按钮文字：{state['button_text']}\n\n"
+                        f"步骤 5/5: 请输入按钮链接\n\n"
+                        f"（如：https://t.me/YourBot）\n\n"
+                        f"发送 /cancel 取消创建"
+                    )
+                return
+            
+            elif state['step'] == 'button_url':
+                state['button_url'] = text.strip()
+                
+                # 创建模板
+                template_id = db.create_promo_template(
+                    name=state['name'],
+                    message=state['message'],
+                    image_file_id=state.get('image_file_id'),
+                    button_text=state['button_text'],
+                    button_url=state['button_url'],
+                    created_by=user_id
+                )
+                
+                del user_states[user_id]
+                
+                has_image = "✅" if state.get('image_file_id') else "❌"
+                has_text = "✅" if state['message'] else "❌"
+                
+                await update.message.reply_text(
+                    f"✅ 广告模板创建成功！\n\n"
+                    f"模板ID: {template_id}\n"
+                    f"模板名称: {state['name']}\n"
+                    f"图片: {has_image}\n"
+                    f"文字: {has_text}\n"
+                    f"按钮: {state['button_text']} → {state['button_url']}\n\n"
+                    "使用 /promo 管理广告"
+                )
+                return
+        
+        elif state['action'] == 'create_scheduled_task':
+            # 处理创建定时任务
+            if text.strip() == '/cancel':
+                del user_states[user_id]
+                await update.message.reply_text("❌ 已取消创建")
+                return
+            
+            if state['step'] == 'target_chats':
+                state['target_chats'] = text.strip()
+                state['step'] = 'scheduled_time'
+                await update.message.reply_text(
+                    f"✅ 目标频道：{state['target_chats']}\n\n"
+                    "步骤 2/2: 请输入发送时间\n\n"
+                    "格式：YYYY-MM-DD HH:MM\n"
+                    "例如：2025-10-28 14:30\n\n"
+                    "发送 /cancel 取消创建"
+                )
+                return
+            
+            elif state['step'] == 'scheduled_time':
+                try:
+                    from datetime import datetime
+                    scheduled_time = datetime.strptime(text.strip(), '%Y-%m-%d %H:%M')
+                    
+                    # 创建定时任务
+                    task_id = db.create_scheduled_task(
+                        template_id=state['template_id'],
+                        target_chats=state['target_chats'],
+                        scheduled_time=scheduled_time,
+                        created_by=user_id
+                    )
+                    
+                    del user_states[user_id]
+                    await update.message.reply_text(
+                        f"✅ 定时任务创建成功！\n\n"
+                        f"任务ID: {task_id}\n"
+                        f"发送时间: {scheduled_time.strftime('%Y-%m-%d %H:%M')}\n"
+                        f"目标: {state['target_chats']}\n\n"
+                        "任务将在指定时间自动发送"
+                    )
+                except ValueError:
+                    await update.message.reply_text(
+                        "❌ 时间格式错误！\n\n"
+                        "请使用格式：YYYY-MM-DD HH:MM\n"
+                        "例如：2025-10-28 14:30\n\n"
+                        "发送 /cancel 取消创建"
+                    )
+                return
+        
+        elif state['action'] == 'send_promo_now':
+            # 处理立即发送
+            if text.strip() == '/cancel':
+                del user_states[user_id]
+                await update.message.reply_text("❌ 已取消发送")
+                return
+            
+            target_chats = [chat.strip() for chat in text.strip().split(',')]
+            template_id = state['template_id']
+            
+            await update.message.reply_text(f"📤 开始发送广告到 {len(target_chats)} 个目标...")
+            
+            success_count = 0
+            failed_count = 0
+            
+            for chat in target_chats:
+                result = await send_promo_message(context.application, template_id, chat)
+                if result:
+                    success_count += 1
+                else:
+                    failed_count += 1
+                
+                # 避免发送过快
+                import asyncio
+                await asyncio.sleep(1)
+            
+            del user_states[user_id]
+            await update.message.reply_text(
+                f"✅ 发送完成！\n\n"
+                f"成功: {success_count}\n"
+                f"失败: {failed_count}\n\n"
+                "使用 /promo 查看详细记录"
+            )
             return
     
     # 默认回复
@@ -928,6 +1499,80 @@ def setup_tron_callbacks():
     tron_payment.set_callback('payment_received', on_payment_received)
 
 
+# ========== 定时任务执行器 ==========
+
+async def check_and_execute_scheduled_tasks(context: ContextTypes.DEFAULT_TYPE):
+    """检查并执行待发送的定时任务"""
+    try:
+        pending_tasks = db.get_pending_tasks()
+        
+        if not pending_tasks:
+            return
+        
+        logger.info(f"Found {len(pending_tasks)} pending promo tasks to execute")
+        
+        for task in pending_tasks:
+            try:
+                # 更新任务状态为执行中
+                db.update_task_status(task['id'], 'executing')
+                
+                # 解析目标频道列表
+                target_chats = [chat.strip() for chat in task['target_chats'].split(',')]
+                
+                success_count = 0
+                failed_count = 0
+                error_messages = []
+                
+                # 发送到每个目标
+                for chat in target_chats:
+                    result = await send_promo_message(
+                        context.application,
+                        task['template_id'],
+                        chat,
+                        task['id']
+                    )
+                    if result:
+                        success_count += 1
+                    else:
+                        failed_count += 1
+                        error_messages.append(f"Failed: {chat}")
+                    
+                    # 避免发送过快
+                    await asyncio.sleep(1)
+                
+                # 更新任务状态
+                result_message = f"Success: {success_count}, Failed: {failed_count}"
+                if error_messages:
+                    result_message += f"\nErrors: {', '.join(error_messages[:5])}"
+                
+                if failed_count == 0:
+                    db.update_task_status(task['id'], 'completed', result_message)
+                else:
+                    db.update_task_status(task['id'], 'failed', result_message)
+                
+                # 通知管理员
+                for admin_id in ADMIN_USER_IDS:
+                    try:
+                        await context.bot.send_message(
+                            chat_id=admin_id,
+                            text=f"📢 定时广告任务完成\n\n"
+                                 f"任务ID: {task['id']}\n"
+                                 f"成功: {success_count}\n"
+                                 f"失败: {failed_count}\n"
+                        )
+                    except:
+                        pass
+                
+                logger.info(f"Task {task['id']} executed: {result_message}")
+                
+            except Exception as e:
+                logger.error(f"Error executing task {task['id']}: {e}")
+                db.update_task_status(task['id'], 'failed', str(e))
+                
+    except Exception as e:
+        logger.error(f"Error in check_and_execute_scheduled_tasks: {e}")
+
+
 # ========== 主函数 ==========
 
 def main():
@@ -948,12 +1593,22 @@ def main():
     application.add_handler(CommandHandler("help", help_command))
     application.add_handler(CommandHandler("admin", admin_command))
     application.add_handler(CommandHandler("pending", pending_command))
+    application.add_handler(CommandHandler("promo", promo_command))
     
     # 注册回调处理器
     application.add_handler(CallbackQueryHandler(button_callback))
     
     # 注册消息处理器
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    application.add_handler(MessageHandler(filters.PHOTO, handle_photo))  # 图片消息
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))  # 文字消息
+    
+    # 添加定时任务检查器（每分钟检查一次）
+    application.job_queue.run_repeating(
+        check_and_execute_scheduled_tasks,
+        interval=60,  # 每60秒检查一次
+        first=10  # 启动后10秒开始
+    )
+    logger.info("Scheduled task checker started (running every 60 seconds)")
     
     # 启动 Bot
     logger.info("Bot started successfully!")
