@@ -1043,16 +1043,22 @@ async def create_xianyu_order_direct(update: Update, context: ContextTypes.DEFAU
     
     # 创建订单
     order_id = f"XY_{user_id}_{int(time.time())}"
-    db.create_order({
-        'order_id': order_id,
-        'user_id': user_id,
-        'payment_method': 'xianyu',
-        'plan_type': plan_type,
-        'amount': plan_info['price_cny'],
-        'currency': 'CNY',
-        'status': 'pending',
-        'membership_days': plan_info['days']
-    })
+    try:
+        db.create_order({
+            'order_id': order_id,
+            'user_id': user_id,
+            'payment_method': 'xianyu',
+            'plan_type': plan_type,
+            'amount': plan_info['price_cny'],
+            'currency': 'CNY',
+            'status': 'pending',
+            'membership_days': plan_info['days']
+        })
+        logger.info(f"Order {order_id} created successfully")
+    except Exception as e:
+        logger.error(f"Failed to create order: {e}", exc_info=True)
+        await query.answer("❌ 创建订单失败，请稍后重试", show_alert=True)
+        return
     
     # 设置用户状态，等待输入订单号
     user_states[user_id] = {
@@ -1088,7 +1094,13 @@ async def create_xianyu_order_direct(update: Update, context: ContextTypes.DEFAU
             InlineKeyboardButton("❌ 取消订单", callback_data=f"cancel_order_{order_id}")
         ]
     ]
-    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+    
+    try:
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        logger.info(f"Message edited successfully for order {order_id}")
+    except Exception as e:
+        logger.error(f"Failed to edit message: {e}", exc_info=True)
+        await query.answer("❌ 显示订单信息失败", show_alert=True)
 
 
 async def process_tron_payment(update: Update, context: ContextTypes.DEFAULT_TYPE, 
