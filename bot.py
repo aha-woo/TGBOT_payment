@@ -1026,9 +1026,17 @@ async def create_xianyu_order_direct(update: Update, context: ContextTypes.DEFAU
                                      plan_type: str, plan_info: dict, query):
     """单套餐模式：直接创建闲鱼订单"""
     user_id = update.effective_user.id
+    logger.info(f"create_xianyu_order_direct: Starting for user {user_id}")
     
     # 检查防刷限制
-    pending_count = db.count_user_pending_orders(user_id)
+    logger.info(f"Checking pending orders for user {user_id}")
+    try:
+        pending_count = db.count_user_pending_orders(user_id)
+        logger.info(f"User {user_id} has {pending_count} pending orders")
+    except Exception as e:
+        logger.error(f"Error counting pending orders: {e}", exc_info=True)
+        await query.answer("❌ 系统错误，请稍后重试", show_alert=True)
+        return
     if pending_count >= MAX_PENDING_ORDERS_PER_USER:
         await query.answer(f"您有 {pending_count} 个待支付订单，请先完成支付", show_alert=True)
         return
