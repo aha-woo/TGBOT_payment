@@ -1801,8 +1801,65 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
             db.add_log('xianyu_order_submitted', user_id, order_id, f'Xianyu order number: {xianyu_order}')
             return
+    
+    # 🆕 智能识别：检查用户是否有待提交订单号的闲鱼订单
+    # 即使 Bot 重启导致 user_states 丢失，也能通过数据库识别
+    conn = db.get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT order_id FROM orders
+        WHERE user_id=? 
+        AND payment_method='xianyu' 
+        AND status='pending'
+        AND (xianyu_order_number IS NULL OR xianyu_order_number='')
+        ORDER BY created_at DESC
+        LIMIT 1
+    """, (user_id,))
+    row = cursor.fetchone()
+    conn.close()
+    
+    if row:
+        # 用户有一个待填写订单号的闲鱼订单
+        order_id = row[0]
+        xianyu_order = text.strip()
         
-        elif state['action'] == 'create_promo_template':
+        # 验证输入是否像订单号（至少5位数字或字母数字组合）
+        if len(xianyu_order) >= 5 and not xianyu_order.startswith('/'):
+            # 更新订单
+            db.update_order_status(order_id, 'pending', xianyu_order_number=xianyu_order)
+            
+            await update.message.reply_text(
+                f"✅ 已收到您的订单编号：{xianyu_order}\n\n"
+                f"订单号：{order_id}\n\n"
+                "管理员将在24小时内审核，请耐心等待"
+            )
+            
+            # 通知管理员
+            for admin_id in ADMIN_USER_IDS:
+                try:
+                    await context.bot.send_message(
+                        chat_id=admin_id,
+                        text=f"🔔 新的闲鱼订单待审核\n\n"
+                             f"订单号: {order_id}\n"
+                             f"用户: {user_id}\n"
+                             f"闲鱼订单号: {xianyu_order}\n\n"
+                             f"使用 /pending 查看详情"
+                    )
+                except:
+                    pass
+            
+            # 清除状态（如果存在）
+            if user_id in user_states:
+                del user_states[user_id]
+            
+            db.add_log('xianyu_order_submitted', user_id, order_id, f'Xianyu order number: {xianyu_order}')
+            return
+    
+    # 检查其他用户状态（广告创建等）
+    if user_id in user_states:
+        state = user_states[user_id]
+        
+        if state['action'] == 'create_promo_template':
             # 处理创建广告模板
             if text and text.strip() == '/cancel':
                 del user_states[user_id]
