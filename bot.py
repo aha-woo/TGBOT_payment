@@ -3,7 +3,7 @@ Telegram Bot 主程序
 """
 import logging
 import asyncio
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ChatMember
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ChatMember, ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import (
     Application, CommandHandler, CallbackQueryHandler, 
     MessageHandler, filters, ContextTypes
@@ -49,6 +49,18 @@ user_states = {}
 
 
 # ========== 工具函数 ==========
+
+def get_main_keyboard() -> ReplyKeyboardMarkup:
+    """获取主键盘（固定显示在聊天框底部）"""
+    keyboard = [
+        ["🏠 主页", "📋 我的订单"],
+        ["👤 会员状态", "❓ 帮助"]
+    ]
+    return ReplyKeyboardMarkup(
+        keyboard,
+        resize_keyboard=True,  # 按钮大小自适应
+        persistent=True  # 持久显示，即使重启 Bot 也保留
+    )
 
 def is_admin(user_id: int) -> bool:
     """检查是否是管理员"""
@@ -180,7 +192,8 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # else:
     #     keyboard.append([InlineKeyboardButton("🔄 续费会员", callback_data="buy_membership")])
     
-    reply_markup = InlineKeyboardMarkup(keyboard)
+    inline_markup = InlineKeyboardMarkup(keyboard)
+    main_keyboard = get_main_keyboard()  # 获取固定键盘
     
     # 如果配置了欢迎图片，发送图片+文字；否则只发送文字
     if WELCOME_IMAGE:
@@ -188,20 +201,34 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_photo(
                 photo=WELCOME_IMAGE,
                 caption=welcome_text,
-                reply_markup=reply_markup
+                reply_markup=main_keyboard  # 使用固定键盘
+            )
+            # 再发送一条带 inline 按钮的消息
+            await update.message.reply_text(
+                "👇 请选择操作：",
+                reply_markup=inline_markup
             )
         except Exception as e:
             logger.error(f"Failed to send welcome image: {e}")
             # 图片发送失败，降级为纯文字
             await update.message.reply_text(
                 welcome_text,
-                reply_markup=reply_markup
+                reply_markup=main_keyboard
+            )
+            await update.message.reply_text(
+                "👇 请选择操作：",
+                reply_markup=inline_markup
             )
     else:
         # 没有配置图片，只发送文字
         await update.message.reply_text(
             welcome_text,
-            reply_markup=reply_markup
+            reply_markup=main_keyboard  # 使用固定键盘
+        )
+        # 再发送一条带 inline 按钮的消息
+        await update.message.reply_text(
+            "👇 请选择操作：",
+            reply_markup=inline_markup
         )
 
 
@@ -215,23 +242,26 @@ async def orders_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     orders = db.get_user_orders(user_id, limit=10)
     
+    main_keyboard = get_main_keyboard()  # 获取固定键盘
+    
     if not orders:
-        await update.message.reply_text("您还没有任何订单")
+        await update.message.reply_text("您还没有任何订单", reply_markup=main_keyboard)
         return
     
     text = "📋 您的订单列表：\n\n"
     keyboard = []
     
     for order in orders:
-        status_emoji = {'pending': '⏳', 'paid': '✅', 'cancelled': '❌', 'expired': '⏰'}
-        text += f"{status_emoji.get(order['status'], '❓')} {order['order_id'][:20]}... - {order['amount']} {order['currency']} - {order['status']}\n"
+        status_emoji = {'pending': '⏳', 'paid': '✅', 'cancelled': '❌', 'expired': '⏰', 'timeout': '⏰'}
+        text += f"{status_emoji.get(order['status'], '❓')} {order['order_id'][:20]}... - {order['status']}\n"
         keyboard.append([InlineKeyboardButton(
             f"查看 {order['order_id'][:15]}...",
             callback_data=f"view_order_{order['order_id']}"
         )])
     
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text(text, reply_markup=reply_markup)
+    inline_markup = InlineKeyboardMarkup(keyboard)
+    await update.message.reply_text(text, reply_markup=main_keyboard)
+    await update.message.reply_text("👇 点击查看订单详情：", reply_markup=inline_markup)
 
 
 async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -239,8 +269,10 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     user = db.get_user(user_id)
     
+    main_keyboard = get_main_keyboard()  # 获取固定键盘
+    
     if not user:
-        await update.message.reply_text("未找到用户信息")
+        await update.message.reply_text("未找到用户信息", reply_markup=main_keyboard)
         return
     
     if user['is_member']:
@@ -257,27 +289,29 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 总消费: {user['total_spent_usdt']} USDT / {user['total_spent_cny']} CNY
 加入时间: {user['member_since']}
 """
+        await update.message.reply_text(text, reply_markup=main_keyboard)
     else:
         text = """
 ❌ 您还不是会员
 
 点击下方按钮购买会员：
 """
-    
-    keyboard = [[InlineKeyboardButton("💳 购买会员", callback_data="buy_membership")]]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    
-    await update.message.reply_text(text, reply_markup=reply_markup)
+        keyboard = [[InlineKeyboardButton("💳 立即购买", callback_data="buy_membership")]]
+        inline_markup = InlineKeyboardMarkup(keyboard)
+        
+        await update.message.reply_text(text, reply_markup=main_keyboard)
+        await update.message.reply_text("👇 选择操作：", reply_markup=inline_markup)
 
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """帮助信息"""
     user_id = update.effective_user.id
+    main_keyboard = get_main_keyboard()  # 获取固定键盘
     
     if is_admin(user_id):
-        await update.message.reply_text(HELP_MESSAGE + "\n\n" + ADMIN_HELP_MESSAGE)
+        await update.message.reply_text(HELP_MESSAGE + "\n\n" + ADMIN_HELP_MESSAGE, reply_markup=main_keyboard)
     else:
-        await update.message.reply_text(HELP_MESSAGE)
+        await update.message.reply_text(HELP_MESSAGE, reply_markup=main_keyboard)
 
 
 # ========== 管理员命令 ==========
@@ -1763,6 +1797,24 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """处理普通消息"""
     user_id = update.effective_user.id
     text = update.message.text
+    
+    # 🆕 处理固定键盘按钮点击
+    if text == "🏠 主页":
+        # 调用 start_command 显示主页
+        await start_command(update, context)
+        return
+    elif text == "📋 我的订单":
+        # 显示订单列表
+        await orders_command(update, context)
+        return
+    elif text == "👤 会员状态":
+        # 显示会员状态
+        await status_command(update, context)
+        return
+    elif text == "❓ 帮助":
+        # 显示帮助信息
+        await help_command(update, context)
+        return
     
     # 检查用户状态
     if user_id in user_states:
