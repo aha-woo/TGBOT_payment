@@ -2090,15 +2090,24 @@ def setup_tron_callbacks():
 # ========== 定时任务执行器 ==========
 
 async def cleanup_expired_orders(context: ContextTypes.DEFAULT_TYPE):
-    """定期清理过期的闲鱼订单"""
+    """定期清理过期的订单（TRON + 闲鱼）"""
     try:
-        from config import XIANYU_ORDER_TIMEOUT_MINUTES
+        from config import ORDER_TIMEOUT_MINUTES, XIANYU_ORDER_TIMEOUT_MINUTES
+        
+        # 清理过期的 TRON 订单
+        tron_cleaned = db.cleanup_expired_tron_orders(ORDER_TIMEOUT_MINUTES)
+        if tron_cleaned > 0:
+            logger.info(f"🧹 Auto-cleanup: {tron_cleaned} TRON order(s) timed out and cleaned up")
         
         # 清理过期的闲鱼订单
-        cleaned_count = db.cleanup_expired_xianyu_orders(XIANYU_ORDER_TIMEOUT_MINUTES)
+        xianyu_cleaned = db.cleanup_expired_xianyu_orders(XIANYU_ORDER_TIMEOUT_MINUTES)
+        if xianyu_cleaned > 0:
+            logger.info(f"🧹 Auto-cleanup: {xianyu_cleaned} xianyu order(s) expired and cleaned up")
         
-        if cleaned_count > 0:
-            logger.info(f"🧹 Auto-cleanup: {cleaned_count} xianyu order(s) expired and cleaned up")
+        # 汇总日志
+        total_cleaned = tron_cleaned + xianyu_cleaned
+        if total_cleaned > 0:
+            logger.info(f"🧹 Total cleaned: {total_cleaned} order(s) (TRON: {tron_cleaned}, Xianyu: {xianyu_cleaned})")
         
     except Exception as e:
         logger.error(f"Error in cleanup_expired_orders: {e}", exc_info=True)
