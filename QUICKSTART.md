@@ -120,6 +120,15 @@ WELCOME_IMAGE=
 
 # 欢迎消息
 WELCOME_MESSAGE="🎉 欢迎来到我们的服务！\n\n✨ 立即购买会员享受专属内容\n💎 快速开通，秒级到账\n\n👇 请选择支付方式"
+
+# 订单超时设置
+ORDER_TIMEOUT_MINUTES=30              # USDT订单超时时间（分钟）
+XIANYU_ORDER_TIMEOUT_MINUTES=30       # 闲鱼订单超时时间（分钟）
+ORDER_CLEANUP_INTERVAL_MINUTES=5      # 订单清理任务运行间隔（分钟）
+
+# 防刷配置
+MAX_PENDING_ORDERS_PER_USER=3         # 每个用户最多同时待支付订单数
+MIN_ORDER_INTERVAL_SECONDS=60         # 下单最小间隔（秒）
 ```
 
 ### 步骤 9: 配置套餐和价格

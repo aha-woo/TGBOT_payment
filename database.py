@@ -467,6 +467,58 @@ class Database:
             return datetime.fromisoformat(row[0])
         return None
     
+    def cleanup_expired_xianyu_orders(self, timeout_minutes: int) -> int:
+        """
+        清理过期的闲鱼待支付订单
+        
+        Args:
+            timeout_minutes: 超时时间（分钟）
+            
+        Returns:
+            清理的订单数量
+        """
+        with self.lock:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            
+            # 计算超时时间点
+            timeout_time = datetime.now() - timedelta(minutes=timeout_minutes)
+            
+            # 查找过期的闲鱼pending订单
+            cursor.execute("""
+                SELECT order_id, user_id FROM orders
+                WHERE payment_method='xianyu' 
+                AND status='pending'
+                AND created_at < ?
+            """, (timeout_time,))
+            
+            expired_orders = cursor.fetchall()
+            
+            if expired_orders:
+                # 批量更新为expired状态
+                order_ids = [order[0] for order in expired_orders]
+                placeholders = ','.join('?' * len(order_ids))
+                cursor.execute(f"""
+                    UPDATE orders 
+                    SET status='expired', expired_at=?
+                    WHERE order_id IN ({placeholders})
+                """, [datetime.now()] + order_ids)
+                
+                conn.commit()
+                count = cursor.rowcount
+                
+                # 记录日志
+                logger = logging.getLogger('database')
+                logger.info(f"Cleaned up {count} expired xianyu orders (timeout: {timeout_minutes} min)")
+                for order_id, user_id in expired_orders:
+                    logger.debug(f"  - Order {order_id} (user {user_id}) expired")
+                
+                conn.close()
+                return count
+            
+            conn.close()
+            return 0
+    
     # ========== 邀请记录 ==========
     
     def add_channel_invite(self, user_id: int, order_id: str, status: str = 'success'):

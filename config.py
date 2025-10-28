@@ -16,10 +16,10 @@ TRON_WALLET_ADDRESS = os.getenv('TRON_WALLET_ADDRESS', 'TYourWalletAddress')  # 
 TRONSCAN_API_KEY = os.getenv('TRONSCAN_API_KEY', 'your-tronscan-api-key')  # TronScan API Key
 
 # ========== 闲鱼配置 ==========
-XIANYU_PRODUCT_URL = os.getenv('XIANYU_PRODUCT_URL', 'https://your-xianyu-product-link')  # 闲鱼商品链接
+XIANYU_PRODUCT_URL = os.getenv('XIANYU_PRODUCT_URL', 'https://m.tb.cn/h.SOQ16rD?tk=77IJf4SF7On CZ321')  # 闲鱼商品链接
 
 # ========== 客服配置 ==========
-CUSTOMER_SERVICE_URL = os.getenv('CUSTOMER_SERVICE_URL', 'https://t.me/your_customer_service')  # 客服链接（可以是 Telegram 个人/群组链接）
+CUSTOMER_SERVICE_URL = os.getenv('CUSTOMER_SERVICE_URL', 'https://t.me/youryhc')  # 客服链接（可以是 Telegram 个人/群组链接）
 
 # ========== 欢迎页面配置 ==========
 # 欢迎图片 - 可以是图片 URL 或 Telegram file_id（留空则不显示图片）
@@ -71,8 +71,10 @@ MEMBERSHIP_PLANS = {
 
 # ========== 系统配置 ==========
 DATABASE_PATH = os.getenv('DATABASE_PATH', 'payment_bot.db')  # 数据库路径
-ORDER_TIMEOUT_MINUTES = int(os.getenv('ORDER_TIMEOUT_MINUTES', '30'))  # 订单超时时间（分钟）
+ORDER_TIMEOUT_MINUTES = int(os.getenv('ORDER_TIMEOUT_MINUTES', '30'))  # USDT订单超时时间（分钟）
+XIANYU_ORDER_TIMEOUT_MINUTES = int(os.getenv('XIANYU_ORDER_TIMEOUT_MINUTES', '30'))  # 闲鱼订单超时时间（分钟）
 POLL_INTERVAL_SECONDS = int(os.getenv('POLL_INTERVAL_SECONDS', '15'))  # TRON 轮询间隔（秒）
+ORDER_CLEANUP_INTERVAL_MINUTES = int(os.getenv('ORDER_CLEANUP_INTERVAL_MINUTES', '5'))  # 订单清理任务运行间隔（分钟）
 
 # ========== 日志配置 ==========
 LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO')

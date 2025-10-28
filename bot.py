@@ -2,6 +2,7 @@
 Telegram Bot 主程序
 """
 import logging
+import asyncio
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ChatMember
 from telegram.ext import (
     Application, CommandHandler, CallbackQueryHandler, 
@@ -1038,7 +1039,8 @@ async def create_xianyu_order_direct(update: Update, context: ContextTypes.DEFAU
         await query.answer("❌ 系统错误，请稍后重试", show_alert=True)
         return
     if pending_count >= MAX_PENDING_ORDERS_PER_USER:
-        await query.answer(f"您有 {pending_count} 个待支付订单，请先完成支付", show_alert=True)
+        logger.warning(f"User {user_id} blocked due to too many pending orders: {pending_count}/{MAX_PENDING_ORDERS_PER_USER}")
+        await query.answer(f"⚠️ 您有 {pending_count} 个待支付订单（限制{MAX_PENDING_ORDERS_PER_USER}个）\n\n请先完成支付或在「我的订单」中取消订单", show_alert=True)
         return
     
     last_order_time = db.get_user_last_order_time(user_id)
@@ -1930,6 +1932,21 @@ def setup_tron_callbacks():
 
 # ========== 定时任务执行器 ==========
 
+async def cleanup_expired_orders(context: ContextTypes.DEFAULT_TYPE):
+    """定期清理过期的闲鱼订单"""
+    try:
+        from config import XIANYU_ORDER_TIMEOUT_MINUTES
+        
+        # 清理过期的闲鱼订单
+        cleaned_count = db.cleanup_expired_xianyu_orders(XIANYU_ORDER_TIMEOUT_MINUTES)
+        
+        if cleaned_count > 0:
+            logger.info(f"🧹 Auto-cleanup: {cleaned_count} xianyu order(s) expired and cleaned up")
+        
+    except Exception as e:
+        logger.error(f"Error in cleanup_expired_orders: {e}", exc_info=True)
+
+
 async def check_and_execute_scheduled_tasks(context: ContextTypes.DEFAULT_TYPE):
     """检查并执行待发送的定时任务"""
     try:
@@ -2038,6 +2055,15 @@ def main():
         first=10  # 启动后10秒开始
     )
     logger.info("Scheduled task checker started (running every 60 seconds)")
+    
+    # 添加过期订单清理器
+    from config import ORDER_CLEANUP_INTERVAL_MINUTES
+    application.job_queue.run_repeating(
+        cleanup_expired_orders,
+        interval=ORDER_CLEANUP_INTERVAL_MINUTES * 60,  # 转换为秒
+        first=30  # 启动后30秒开始第一次清理
+    )
+    logger.info(f"Order cleanup task started (running every {ORDER_CLEANUP_INTERVAL_MINUTES} minutes)")
     
     # 启动 Bot
     logger.info("Bot started successfully!")
