@@ -397,18 +397,63 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.answer("套餐不存在", show_alert=True)
             return
         
-        # 检查防刷限制
+        # 检查防刷限制 - 待支付订单数量
         pending_count = db.count_user_pending_orders(user_id)
         if pending_count >= MAX_PENDING_ORDERS_PER_USER:
-            await query.answer(f"您有 {pending_count} 个待支付订单，请先完成支付", show_alert=True)
+            await query.answer("⚠️ 待支付订单已达上限", show_alert=True)
+            
+            from config import XIANYU_ORDER_TIMEOUT_MINUTES
+            message = f"""
+⚠️ **订单数量已达上限**
+
+您当前有 **{pending_count}** 个待支付订单
+系统限制：最多 **{MAX_PENDING_ORDERS_PER_USER}** 个待支付订单
+
+📋 **如何处理：**
+
+1️⃣ **查看订单** - 点击下方「📋 我的订单」
+2️⃣ **完成支付** - 如果准备购买，请尽快支付
+3️⃣ **取消订单** - 不再购买可以取消订单
+
+⏰ **自动清理**
+超过 {XIANYU_ORDER_TIMEOUT_MINUTES} 分钟未支付的订单会自动过期
+
+💡 订单过期或取消后，您就可以创建新订单了
+"""
+            keyboard = [
+                [InlineKeyboardButton("📋 我的订单", callback_data='my_orders')],
+                [InlineKeyboardButton("« 返回主菜单", callback_data='back_to_main')]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await query.edit_message_text(text=message, reply_markup=reply_markup, parse_mode='Markdown')
             return
         
+        # 检查防刷限制 - 下单时间间隔
         last_order_time = db.get_user_last_order_time(user_id)
         if last_order_time:
             time_since_last = (datetime.now() - last_order_time).total_seconds()
             if time_since_last < MIN_ORDER_INTERVAL_SECONDS:
                 wait_time = int(MIN_ORDER_INTERVAL_SECONDS - time_since_last)
-                await query.answer(f"请等待 {wait_time} 秒后再下单", show_alert=True)
+                
+                await query.answer(f"⏳ 请等待 {wait_time} 秒", show_alert=True)
+                
+                message = f"""
+⏳ **下单过于频繁**
+
+为了防止误操作和刷单，系统限制了下单速度。
+
+⏰ **请等待：{wait_time} 秒**
+
+💡 **提示**
+系统会在 {wait_time} 秒后自动允许您创建新订单
+请稍候片刻再试
+
+🔒 **防刷保护**
+这是为了保护您的账户安全和系统稳定性
+"""
+                keyboard = [[InlineKeyboardButton("« 返回主菜单", callback_data='back_to_main')]]
+                reply_markup = InlineKeyboardMarkup(keyboard)
+                await query.edit_message_text(text=message, reply_markup=reply_markup, parse_mode='Markdown')
                 return
         
         # 创建订单
@@ -1003,18 +1048,63 @@ async def process_payment_selection(update: Update, context: ContextTypes.DEFAUL
         await query.edit_message_text("套餐不存在")
         return
     
-    # 检查防刷限制
+    # 检查防刷限制 - 待支付订单数量
     pending_count = db.count_user_pending_orders(user_id)
     if pending_count >= MAX_PENDING_ORDERS_PER_USER:
-        await query.answer(f"您有 {pending_count} 个待支付订单，请先完成支付", show_alert=True)
+        await query.answer("⚠️ 待支付订单已达上限", show_alert=True)
+        
+        from config import XIANYU_ORDER_TIMEOUT_MINUTES
+        message = f"""
+⚠️ **订单数量已达上限**
+
+您当前有 **{pending_count}** 个待支付订单
+系统限制：最多 **{MAX_PENDING_ORDERS_PER_USER}** 个待支付订单
+
+📋 **如何处理：**
+
+1️⃣ **查看订单** - 点击下方「📋 我的订单」
+2️⃣ **完成支付** - 如果准备购买，请尽快支付
+3️⃣ **取消订单** - 不再购买可以取消订单
+
+⏰ **自动清理**
+超过 {XIANYU_ORDER_TIMEOUT_MINUTES} 分钟未支付的订单会自动过期
+
+💡 订单过期或取消后，您就可以创建新订单了
+"""
+        keyboard = [
+            [InlineKeyboardButton("📋 我的订单", callback_data='my_orders')],
+            [InlineKeyboardButton("« 返回主菜单", callback_data='back_to_main')]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await query.edit_message_text(text=message, reply_markup=reply_markup, parse_mode='Markdown')
         return
     
+    # 检查防刷限制 - 下单时间间隔
     last_order_time = db.get_user_last_order_time(user_id)
     if last_order_time:
         time_since_last = (datetime.now() - last_order_time).total_seconds()
         if time_since_last < MIN_ORDER_INTERVAL_SECONDS:
             wait_time = int(MIN_ORDER_INTERVAL_SECONDS - time_since_last)
-            await query.answer(f"请等待 {wait_time} 秒后再下单", show_alert=True)
+            
+            await query.answer(f"⏳ 请等待 {wait_time} 秒", show_alert=True)
+            
+            message = f"""
+⏳ **下单过于频繁**
+
+为了防止误操作和刷单，系统限制了下单速度。
+
+⏰ **请等待：{wait_time} 秒**
+
+💡 **提示**
+系统会在 {wait_time} 秒后自动允许您创建新订单
+请稍候片刻再试
+
+🔒 **防刷保护**
+这是为了保护您的账户安全和系统稳定性
+"""
+            keyboard = [[InlineKeyboardButton("« 返回主菜单", callback_data='back_to_main')]]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await query.edit_message_text(text=message, reply_markup=reply_markup, parse_mode='Markdown')
             return
     
     if method == 'tron':
@@ -1040,7 +1130,47 @@ async def create_xianyu_order_direct(update: Update, context: ContextTypes.DEFAU
         return
     if pending_count >= MAX_PENDING_ORDERS_PER_USER:
         logger.warning(f"User {user_id} blocked due to too many pending orders: {pending_count}/{MAX_PENDING_ORDERS_PER_USER}")
-        await query.answer(f"⚠️ 您有 {pending_count} 个待支付订单（限制{MAX_PENDING_ORDERS_PER_USER}个）\n\n请先完成支付或在「我的订单」中取消订单", show_alert=True)
+        
+        # 发送弹窗提示
+        await query.answer("⚠️ 待支付订单已达上限", show_alert=True)
+        
+        # 发送详细的消息到聊天窗口
+        from config import XIANYU_ORDER_TIMEOUT_MINUTES
+        message = f"""
+⚠️ **订单数量已达上限**
+
+您当前有 **{pending_count}** 个待支付订单
+系统限制：最多 **{MAX_PENDING_ORDERS_PER_USER}** 个待支付订单
+
+📋 **如何处理：**
+
+1️⃣ **查看订单**
+   点击下方「📋 我的订单」查看待支付订单
+
+2️⃣ **完成支付**
+   如果准备购买，请尽快完成支付
+
+3️⃣ **取消订单**
+   如果不再购买，可以在订单中点击取消
+
+⏰ **自动清理**
+   超过 {XIANYU_ORDER_TIMEOUT_MINUTES} 分钟未支付的订单会自动过期
+
+💡 **提示**
+   订单过期或取消后，您就可以创建新订单了
+"""
+        
+        keyboard = [
+            [InlineKeyboardButton("📋 我的订单", callback_data='my_orders')],
+            [InlineKeyboardButton("« 返回主菜单", callback_data='back_to_main')]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await query.edit_message_text(
+            text=message,
+            reply_markup=reply_markup,
+            parse_mode='Markdown'
+        )
         return
     
     last_order_time = db.get_user_last_order_time(user_id)
@@ -1048,7 +1178,34 @@ async def create_xianyu_order_direct(update: Update, context: ContextTypes.DEFAU
         time_since_last = (datetime.now() - last_order_time).total_seconds()
         if time_since_last < MIN_ORDER_INTERVAL_SECONDS:
             wait_time = int(MIN_ORDER_INTERVAL_SECONDS - time_since_last)
-            await query.answer(f"请等待 {wait_time} 秒后再下单", show_alert=True)
+            
+            # 发送弹窗提示
+            await query.answer(f"⏳ 请等待 {wait_time} 秒", show_alert=True)
+            
+            # 发送详细消息
+            message = f"""
+⏳ **下单过于频繁**
+
+为了防止误操作和刷单，系统限制了下单速度。
+
+⏰ **请等待：{wait_time} 秒**
+
+💡 **提示**
+系统会在 {wait_time} 秒后自动允许您创建新订单
+请稍候片刻再试
+
+🔒 **防刷保护**
+这是为了保护您的账户安全和系统稳定性
+"""
+            
+            keyboard = [[InlineKeyboardButton("« 返回主菜单", callback_data='back_to_main')]]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
+            await query.edit_message_text(
+                text=message,
+                reply_markup=reply_markup,
+                parse_mode='Markdown'
+            )
             return
     
     # 创建订单
