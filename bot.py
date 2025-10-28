@@ -59,7 +59,7 @@ def get_main_keyboard() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         keyboard,
         resize_keyboard=True,  # 按钮大小自适应
-        persistent=True  # 持久显示，即使重启 Bot 也保留
+        one_time_keyboard=False  # 不自动隐藏键盘
     )
 
 def is_admin(user_id: int) -> bool:
