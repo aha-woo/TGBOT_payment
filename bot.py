@@ -50,6 +50,32 @@ user_states = {}
 
 # ========== 工具函数 ==========
 
+def format_wide_message(text: str, min_width: int = 50) -> str:
+    """格式化消息使其显示更宽"""
+    lines = text.strip().split('\n')
+    formatted_lines = []
+    
+    for line in lines:
+        if line.strip():
+            # 如果行太短，添加装饰性字符使其更宽
+            if len(line) < min_width:
+                # 计算需要添加的字符数
+                needed = min_width - len(line)
+                # 使用点号或空格来填充，让消息看起来更宽
+                if needed > 0:
+                    # 在行末添加点号，但不要太密集
+                    dots = '·' * min(needed, 20)  # 最多20个点
+                    spaces = ' ' * max(0, needed - 20)
+                    formatted_lines.append(line + dots + spaces)
+                else:
+                    formatted_lines.append(line)
+            else:
+                formatted_lines.append(line)
+        else:
+            formatted_lines.append(line)
+    
+    return '\n'.join(formatted_lines)
+
 def get_main_keyboard() -> ReplyKeyboardMarkup:
     """获取主键盘（固定显示在聊天框底部）"""
     keyboard = [
@@ -98,7 +124,7 @@ async def invite_user_to_channel(app: Application, user_id: int, order_id: str) 
 ⏰ **重要提示：**
 • 这是您的专属邀请链接
 • 永久有效，随时可用
-• ⚠️ 仅可使用一次，点击后立即失效
+• ⚠️⚠️ ⚠️ ⚠️ ⚠️ ⚠️  仅可使用一次，点击后立即失效
 • 请勿转发他人
 
 🔒 **隐私保护：**
@@ -172,7 +198,8 @@ def format_order_info(order: dict) -> str:
     if order['payment_method'] == 'xianyu' and order['xianyu_order_number']:
         text += f"闲鱼订单号: {order['xianyu_order_number']}\n"
     
-    return text
+    # 使用格式化函数使消息更宽
+    return format_wide_message(text, min_width=50)
 
 
 # ========== 用户命令 ==========
@@ -323,6 +350,9 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 总消费: {user['total_spent_usdt']} USDT / {user['total_spent_cny']} CNY
 加入时间: {user['member_since']}
 """
+        
+        # 使用格式化函数使消息更宽
+        text = format_wide_message(text, min_width=50)
         await update.message.reply_text(text, reply_markup=main_keyboard)
     else:
         text = """
@@ -376,6 +406,9 @@ USDT: {stats['total_usdt']:.2f}
 新订单: {stats['today_orders']}
 已支付: {stats['today_paid']}
 """
+    
+    # 使用格式化函数使消息更宽
+    text = format_wide_message(text, min_width=60)
     
     keyboard = [
         [InlineKeyboardButton("📋 待审核订单", callback_data="admin_pending_orders")],
@@ -629,6 +662,9 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 总消费: {user['total_spent_usdt']} USDT / {user['total_spent_cny']} CNY
 """
+            
+            # 使用格式化函数使消息更宽
+            text = format_wide_message(text, min_width=50)
         else:
             text = "❌ 您还不是会员"
         
@@ -668,9 +704,14 @@ USDT: {stats['total_usdt']:.2f}
 人民币: {stats['total_cny']:.2f}
 """
         
+        # 使用格式化函数使消息更宽
+        text = format_wide_message(text, min_width=60)
+        
         keyboard = [
             [InlineKeyboardButton("📋 待审核订单", callback_data="admin_pending_orders")],
             [InlineKeyboardButton("👥 用户列表", callback_data="admin_users")],
+            [InlineKeyboardButton("📊 详细统计", callback_data="admin_stats")],
+            [InlineKeyboardButton("📢 广告管理", callback_data="promo_manage")],
             [InlineKeyboardButton("🔄 刷新", callback_data="admin_panel")],
             [InlineKeyboardButton("« 返回", callback_data="back_to_main")]
         ]
@@ -712,6 +753,44 @@ USDT: {stats['total_usdt']:.2f}
         for user in users:
             member_emoji = "✅" if user['is_member'] else "❌"
             text += f"{member_emoji} {user['user_id']} - @{user['username'] or 'N/A'} - {user['first_name']}\n"
+        
+        keyboard = [[InlineKeyboardButton("« 返回", callback_data="admin_panel")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await query.edit_message_text(text, reply_markup=reply_markup)
+    
+    elif data == "admin_stats":
+        if not is_admin(user_id):
+            await query.answer("⛔ 您没有权限", show_alert=True)
+            return
+        
+        stats = db.get_statistics()
+        
+        text = f"""
+📊 详细统计
+
+👥 用户统计：
+总用户数: {stats['total_users']}
+活跃会员: {stats['active_members']}
+非会员: {stats['total_users'] - stats['active_members']}
+
+📋 订单统计：
+总订单数: {stats['total_orders']}
+已支付: {stats['paid_orders']}
+待处理: {stats['pending_orders']}
+已取消: {stats.get('cancelled_orders', 0)}
+已过期: {stats.get('expired_orders', 0)}
+
+💰 收入统计：
+USDT 收入: {stats['total_usdt']:.2f} USDT
+人民币收入: {stats['total_cny']:.2f} CNY
+
+📅 今日数据：
+新订单: {stats['today_orders']}
+已支付: {stats['today_paid']}
+"""
+        
+        # 使用格式化函数使消息更宽
+        text = format_wide_message(text, min_width=60)
         
         keyboard = [[InlineKeyboardButton("« 返回", callback_data="admin_panel")]]
         reply_markup = InlineKeyboardMarkup(keyboard)
