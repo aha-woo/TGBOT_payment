@@ -30,35 +30,23 @@ WELCOME_IMAGE = os.getenv('WELCOME_IMAGE', '')
 # ========== 会员配置 ==========
 
 # 是否启用多套餐模式（True=显示套餐选择, False=固定价格直接支付）
-ENABLE_MULTIPLE_PLANS = os.getenv('ENABLE_MULTIPLE_PLANS', 'true').lower() == 'true'
+ENABLE_MULTIPLE_PLANS = os.getenv('ENABLE_MULTIPLE_PLANS', 'false').lower() == 'true'
 
 # 默认套餐配置（当 ENABLE_MULTIPLE_PLANS=False 时使用）
 DEFAULT_PLAN = {
-    'name': '会员',
-    'days': 30,
-    'price_usdt': 10.0,
-    'price_cny': 68.0
+    'name': '永久会员',
+    'days': 36500,
+    'price_usdt': 13.0,
+    'price_cny': 98.0
 }
 
 # 多套餐配置（当 ENABLE_MULTIPLE_PLANS=True 时使用）
 MEMBERSHIP_PLANS = {
-    'month': {
-        'name': '月度会员',
-        'days': 30,
-        'price_usdt': 10.0,
-        'price_cny': 68.0
-    },
-    'quarter': {
-        'name': '季度会员',
-        'days': 90,
-        'price_usdt': 25.0,
-        'price_cny': 178.0
-    },
-    'year': {
-        'name': '年度会员',
-        'days': 365,
-        'price_usdt': 88.0,
-        'price_cny': 588.0
+    'default': {
+        'name': '永久会员',
+        'days': 36500,  # 100年 = 永久
+        'price_usdt': 13.0,
+        'price_cny': 98.0
     }
 }
 
