@@ -184,8 +184,8 @@ class TronPayment:
         memo = order_id
         timeout_at = datetime.now() + timedelta(minutes=timeout_minutes)
         
-        # 生成支付 URI
-        pay_uri = f"tron:{self.wallet_address}?amount={amount_usdt}&token=USDT&memo={memo}"
+        # 生成支付 URI（金额+2以覆盖手续费）
+        pay_uri = f"tron:{self.wallet_address}?amount={amount_usdt + 2}&token=USDT&memo={memo}"
         
         # 生成 QR 码
         qr = qrcode.QRCode(version=1, box_size=10, border=4)

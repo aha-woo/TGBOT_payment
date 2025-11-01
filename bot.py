@@ -1478,7 +1478,7 @@ async def process_tron_payment(update: Update, context: ContextTypes.DEFAULT_TYP
 💳 USDT (TRC20) 支付
 
 🎊 套餐: {plan_info['name']} 【永久会员】
-💰 支付金额: {plan_info['price_usdt']} USDT
+💰 需要到账: {plan_info['price_usdt']} USDT
 📋 订单号: `{order_id}`
 
 ━━━━━━━━━━━━━━━━━━━━
@@ -1487,21 +1487,42 @@ async def process_tron_payment(update: Update, context: ContextTypes.DEFAULT_TYP
 ━━━━━━━━━━━━━━━━━━━━
 
 ⚠️ 重要提示：
+
 1️⃣ 必须选择 TRC20 网络（波场链）
    ❌ 不要选 ERC20、BEP20 等其他网络
    ❌ 选错网络资产将丢失！
 
-2️⃣ 实际到账金额必须是 {plan_info['price_usdt']} USDT
-   • 手续费（Gas费）需要您自己承担
-   • TRC20 手续费约 1-2 USDT
-   • 建议转账 {plan_info['price_usdt'] + 1} USDT 以上
+2️⃣ 转账金额说明（重要！）
+   💰 我需要到账：{plan_info['price_usdt']} USDT
+   💸 手续费：约 1-2 USDT（您自己承担）
+   
+   📱 扫码自动填充：{plan_info['price_usdt'] + 2} USDT
+   ⚠️ 这是预估金额（包含手续费）
+   ⚠️ 您可以根据钱包显示的手续费调整金额
+   
+   ✅ 只要保证到账 ≥ {plan_info['price_usdt']} USDT 即可
+   ❌ 如果到账不足 {plan_info['price_usdt']} USDT 将无法激活
+   
+   💡 建议：
+   • 查看钱包显示的手续费
+   • 转账金额 = {plan_info['price_usdt']} + 手续费
+   • 例如：手续费 1 USDT，则转 {plan_info['price_usdt'] + 1} USDT
+   • 例如：手续费 2 USDT，则转 {plan_info['price_usdt'] + 2} USDT
 
-3️⃣ 支付后自动确认（约15分钟）
+3️⃣ 支持的钱包
+   ✅ imToken、TokenPocket、OKX Web3 钱包
+   ✅ TronLink、Trust Wallet
+   ⚠️ OKX 交易所 APP 不支持扫码，需手动转账
+
+4️⃣ 支付后自动确认（约15分钟）
    • 系统检测到账后自动发送入群链接
    • 确认时间视网络情况而定
 
-⚠️ 重要提示
-🔒 邀请链接是一次性的！！！！！！！！！
+━━━━━━━━━━━━━━━━━━━━
+🔒 邀请链接重要提示
+━━━━━━━━━━━━━━━━━━━━
+
+⚠️ 邀请链接是一次性的！！！！！！！！！
    • 点击进群后链接立即失效！！！！！！！！！！
    • 请勿分享给他人！！！！！！！！！！
    • 分享后链接会失效，您自己也无法使用！！！！！！！！！！
