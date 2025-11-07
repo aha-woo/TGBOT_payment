@@ -206,62 +206,97 @@ def format_order_info(order: dict) -> str:
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """开始命令 - 自定义欢迎界面"""
-    user = update.effective_user
-    db.get_or_create_user(user.id, user.username, user.first_name, user.last_name)
-    
-    # 使用自定义欢迎消息（从 config.py）
-    welcome_text = WELCOME_MESSAGE
-    
-    # 构建按钮布局
-    keyboard = []
-    
-    # 第一行：支付方式（并排显示）
-    # 根据配置决定按钮文字
-    if ENABLE_MULTIPLE_PLANS:
-        # 多套餐模式：显示简单的支付方式
-        usdt_btn_text = "💎 USDT 支付"
-        xianyu_btn_text = "🏪 闲鱼支付"
-    else:
-        # 单套餐模式：直接显示价格
-        usdt_btn_text = f"💎 USDT 支付 - {DEFAULT_PLAN['price_usdt']} USDT"
-        xianyu_btn_text = f"🏪 闲鱼支付 - ¥{DEFAULT_PLAN['price_cny']}"
-    
-    keyboard.append([
-        InlineKeyboardButton(usdt_btn_text, callback_data="direct_usdt_payment"),
-        InlineKeyboardButton(xianyu_btn_text, callback_data="direct_xianyu_payment")
-    ])
-    
-    # 第二行：查询功能（并排显示）
-    keyboard.append([
-        InlineKeyboardButton("📋 我的订单", callback_data="my_orders"),
-        InlineKeyboardButton("👤 会员状态", callback_data="my_status")
-    ])
-    
-    # 第三行：客服和帮助（并排显示）
-    keyboard.append([
-        InlineKeyboardButton("👨‍💼 联系客服", url=CUSTOMER_SERVICE_URL),
-        InlineKeyboardButton("❓ 使用帮助", callback_data="help")
-    ])
-    
-    # 管理员功能（单独一行）
-    if is_admin(user.id):
-        keyboard.append([InlineKeyboardButton("👑 管理员面板", callback_data="admin_panel")])
-    
-    # 隐藏的购买按钮（保留代码，但不显示）
-    # if not is_member:
-    #     keyboard.append([InlineKeyboardButton("🎉 立即购买会员", callback_data="buy_membership")])
-    # else:
-    #     keyboard.append([InlineKeyboardButton("🔄 续费会员", callback_data="buy_membership")])
-    
-    inline_markup = InlineKeyboardMarkup(keyboard)
-    main_keyboard = get_main_keyboard()  # 获取固定键盘
-    
-    # 如果配置了欢迎图片，发送图片+文字；否则只发送文字
-    if WELCOME_IMAGE:
-        try:
-            await update.message.reply_photo(
-                photo=WELCOME_IMAGE,
-                caption=welcome_text,
+    try:
+        user = update.effective_user
+        logger.info(f"start_command called by user {user.id} (@{user.username})")
+        
+        # 检查 update.message 是否存在
+        if not update.message:
+            logger.error("update.message is None in start_command!")
+            if update.callback_query:
+                await update.callback_query.answer("❌ 错误：无法获取消息")
+            return
+        
+        db.get_or_create_user(user.id, user.username, user.first_name, user.last_name)
+        
+        # 使用自定义欢迎消息（从 config.py）
+        welcome_text = WELCOME_MESSAGE
+        if not welcome_text:
+            logger.error("WELCOME_MESSAGE is None or empty!")
+            welcome_text = "欢迎使用本 Bot！"
+        
+        # 构建按钮布局
+        keyboard = []
+        
+        # 第一行：支付方式（并排显示）
+        # 根据配置决定按钮文字
+        if ENABLE_MULTIPLE_PLANS:
+            # 多套餐模式：显示简单的支付方式
+            usdt_btn_text = "💎 USDT 支付"
+            xianyu_btn_text = "🏪 闲鱼支付"
+        else:
+            # 单套餐模式：直接显示价格
+            usdt_btn_text = f"💎 USDT 支付 - {DEFAULT_PLAN['price_usdt']} USDT"
+            xianyu_btn_text = f"🏪 闲鱼支付 - ¥{DEFAULT_PLAN['price_cny']}"
+        
+        keyboard.append([
+            InlineKeyboardButton(usdt_btn_text, callback_data="direct_usdt_payment"),
+            InlineKeyboardButton(xianyu_btn_text, callback_data="direct_xianyu_payment")
+        ])
+        
+        # 第二行：查询功能（并排显示）
+        keyboard.append([
+            InlineKeyboardButton("📋 我的订单", callback_data="my_orders"),
+            InlineKeyboardButton("👤 会员状态", callback_data="my_status")
+        ])
+        
+        # 第三行：客服和帮助（并排显示）
+        keyboard.append([
+            InlineKeyboardButton("👨‍💼 联系客服", url=CUSTOMER_SERVICE_URL),
+            InlineKeyboardButton("❓ 使用帮助", callback_data="help")
+        ])
+        
+        # 管理员功能（单独一行）
+        if is_admin(user.id):
+            keyboard.append([InlineKeyboardButton("👑 管理员面板", callback_data="admin_panel")])
+        
+        # 隐藏的购买按钮（保留代码，但不显示）
+        # if not is_member:
+        #     keyboard.append([InlineKeyboardButton("🎉 立即购买会员", callback_data="buy_membership")])
+        # else:
+        #     keyboard.append([InlineKeyboardButton("🔄 续费会员", callback_data="buy_membership")])
+        
+        inline_markup = InlineKeyboardMarkup(keyboard)
+        main_keyboard = get_main_keyboard()  # 获取固定键盘
+        
+        # 如果配置了欢迎图片，发送图片+文字；否则只发送文字
+        if WELCOME_IMAGE:
+            try:
+                await update.message.reply_photo(
+                    photo=WELCOME_IMAGE,
+                    caption=welcome_text,
+                    reply_markup=main_keyboard  # 使用固定键盘
+                )
+                # 再发送一条带 inline 按钮的消息
+                await update.message.reply_text(
+                    "👇 请选择操作：",
+                    reply_markup=inline_markup
+                )
+            except Exception as e:
+                logger.error(f"Failed to send welcome image: {e}", exc_info=True)
+                # 图片发送失败，降级为纯文字
+                await update.message.reply_text(
+                    welcome_text,
+                    reply_markup=main_keyboard
+                )
+                await update.message.reply_text(
+                    "👇 请选择操作：",
+                    reply_markup=inline_markup
+                )
+        else:
+            # 没有配置图片，只发送文字
+            await update.message.reply_text(
+                welcome_text,
                 reply_markup=main_keyboard  # 使用固定键盘
             )
             # 再发送一条带 inline 按钮的消息
@@ -269,28 +304,18 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "👇 请选择操作：",
                 reply_markup=inline_markup
             )
-        except Exception as e:
-            logger.error(f"Failed to send welcome image: {e}")
-            # 图片发送失败，降级为纯文字
-            await update.message.reply_text(
-                welcome_text,
-                reply_markup=main_keyboard
-            )
-            await update.message.reply_text(
-                "👇 请选择操作：",
-                reply_markup=inline_markup
-            )
-    else:
-        # 没有配置图片，只发送文字
-        await update.message.reply_text(
-            welcome_text,
-            reply_markup=main_keyboard  # 使用固定键盘
-        )
-        # 再发送一条带 inline 按钮的消息
-        await update.message.reply_text(
-            "👇 请选择操作：",
-            reply_markup=inline_markup
-        )
+        
+        logger.info(f"start_command completed successfully for user {user.id}")
+        
+    except Exception as e:
+        logger.error(f"Error in start_command: {e}", exc_info=True)
+        try:
+            if update.message:
+                await update.message.reply_text("❌ 发生错误，请稍后重试或联系管理员")
+            elif update.callback_query:
+                await update.callback_query.answer("❌ 发生错误", show_alert=True)
+        except:
+            pass
 
 
 async def buy_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
